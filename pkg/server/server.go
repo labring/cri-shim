@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net"
 	"os"
@@ -46,6 +45,8 @@ type Server struct {
 	listener    net.Listener
 	bufListener *bufconn.Listener
 	imageClient imageutil.ImageInterface
+
+	commitManager *CommitManager
 }
 
 func New(options Options, registryOptions imageutil.RegistryOptions) (*Server, error) {
@@ -66,6 +67,7 @@ func New(options Options, registryOptions imageutil.RegistryOptions) (*Server, e
 
 		options:               options,
 		globalRegistryOptions: registryOptions,
+		commitManager:         NewCommitManager(),
 	}, nil
 }
 
@@ -147,6 +149,11 @@ func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopCont
 
 func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.RemoveContainerRequest) (*runtimeapi.RemoveContainerResponse, error) {
 	slog.Info("Doing remove container request", "request", request)
+	if _, exist := s.commitManager.Get(request.ContainerId); exist {
+		if err := s.commitManager.WaitForCommit(request.ContainerId, ctx); err != nil {
+			slog.Error("Error happen when container commit", "error", err)
+		}
+	}
 	return s.client.RemoveContainer(ctx, request)
 }
 
@@ -271,10 +278,16 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 		return err
 	}
 
-	registry, imageRef, flag, err := s.GetInfoFromContainerEnv(statusResp)
+	registry, imageRef, commitFlag, pushFlag, err := s.GetInfoFromContainerEnv(statusResp)
 
 	//commit image
-	if flag && (err == nil || errors.Is(err, errutil.ErrPasswordNotFound)) {
+	if commitFlag && err == nil {
+
+		if _, exist := s.commitManager.Get(id); exist {
+			return errutil.ErrContainerAlreadyCommit
+		}
+		s.commitManager.Set(id)
+
 		// todo report failed to commit containers
 		// skip commit if container is not running
 		if statusResp.Status.State != runtimeapi.ContainerState_CONTAINER_RUNNING {
@@ -285,12 +298,25 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 
 		imageName := registry.GetImageRef(imageRef)
 
-		if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, false); err != nil {
-			slog.Error("failed to commit container", "error", err)
+		const maxRetries = 5
+		const retryDelay = time.Second * 2
+
+		for i := 0; i < maxRetries; i++ {
+			if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, false); err == nil {
+				break
+			}
+			slog.Error("failed to commit container", "attempt", i+1, "error", err)
+			time.Sleep(retryDelay)
+		}
+
+		if err != nil {
+			slog.Error("failed to commit container after retries", "error", err)
 			return err
 		}
 
-		if err == nil {
+		s.commitManager.NotifyCommitCompletion(id)
+
+		if pushFlag {
 			if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to login register", "error", err)
 				return err
@@ -301,17 +327,18 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 				return err
 			}
 		} else {
-			slog.Error("not found password", "error", err)
+			slog.Error("not push container", "error", errutil.ErrPasswordNotFound)
 		}
+
 	}
 	return nil
 }
 
-func (s *Server) GetInfoFromContainerEnv(resp *runtimeapi.ContainerStatusResponse) (*imageutil.Registry, string, bool, error) {
+func (s *Server) GetInfoFromContainerEnv(resp *runtimeapi.ContainerStatusResponse) (*imageutil.Registry, string, bool, bool, error) {
 	info := &container.Info{}
 	if err := json.Unmarshal([]byte(resp.Info["info"]), info); err != nil {
 		slog.Error("failed to unmarshal container info", "error", err)
-		return nil, "", false, err
+		return nil, "", false, false, err
 	}
 	slog.Debug("Got container info env", "info env", info.Config.Envs)
 
@@ -347,15 +374,16 @@ func (s *Server) GetInfoFromContainerEnv(resp *runtimeapi.ContainerStatusRespons
 		Repository:   repo,
 	}
 
-	flag := false
+	commitFlag := false
 	if commitOnStop == types.ContainerCommitOnStopEnvEnableValue {
-		flag = true
+		commitFlag = true
 	}
 
-	var err error
+	pushFlag := true
 	if userName != "" && password == "" {
-		err = errutil.ErrPasswordNotFound
+		pushFlag = false
+		slog.Error("not found password", "error", errutil.ErrPasswordNotFound)
 	}
 
-	return imageutil.NewRegistry(s.globalRegistryOptions, envRegistryOpt, s.options.ContainerdNamespace, sealosUsername), imageName, flag, err
+	return imageutil.NewRegistry(s.globalRegistryOptions, envRegistryOpt, s.options.ContainerdNamespace, sealosUsername), imageName, commitFlag, pushFlag, nil
 }
