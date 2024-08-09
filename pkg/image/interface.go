@@ -67,7 +67,7 @@ func (impl *imageInterfaceImpl) Stop() {
 // containerID: the ID of the container
 // pause: whether to pause the container before committing
 func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, containerID string, pause bool) error {
-	options := types.ContainerCommitOptions{
+	opt := types.ContainerCommitOptions{
 		Stdout:   impl.Stdout,
 		GOptions: impl.GlobalOptions,
 		Pause:    pause,
@@ -75,7 +75,7 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 
 	tmpName := imageName + "tmp"
 
-	if err := container.Commit(ctx, impl.Client, tmpName, containerID, options); err != nil {
+	if err := container.Commit(ctx, impl.Client, tmpName, containerID, opt); err != nil {
 		return err
 	}
 
@@ -90,12 +90,12 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 // srcRawRef: the source image reference
 // destRawRef: the destination image reference
 func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawRef string) error {
-	options := types.ImageConvertOptions{
+	opt := types.ImageConvertOptions{
 		GOptions: impl.GlobalOptions,
 		Oci:      true,
 		Stdout:   impl.Stdout,
 	}
-	return image.Convert(ctx, impl.Client, srcRawRef, destRawRef, options)
+	return image.Convert(ctx, impl.Client, srcRawRef, destRawRef, opt)
 }
 
 // remove deletes the specified image
@@ -103,24 +103,24 @@ func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawR
 // force: whether to force delete
 // async: whether to delete asynchronously
 func (impl *imageInterfaceImpl) remove(ctx context.Context, args string, force, async bool) error {
-	options := types.ImageRemoveOptions{
+	opt := types.ImageRemoveOptions{
 		Stdout:   impl.Stdout,
 		GOptions: impl.GlobalOptions,
 		Force:    force,
 		Async:    async,
 	}
-	return image.Remove(ctx, impl.Client, []string{args}, options)
+	return image.Remove(ctx, impl.Client, []string{args}, opt)
 }
 
 // Push pushes an image to a remote repository
 // args: the list of images
 func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
-	options := types.ImagePushOptions{
+	opt := types.ImagePushOptions{
 		GOptions: impl.GlobalOptions,
 		Stdout:   impl.Stdout,
 	}
 
-	return image.Push(ctx, impl.Client, args, options)
+	return image.Push(ctx, impl.Client, args, opt)
 }
 
 // Login logs in to the image registry
@@ -128,16 +128,16 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
 // username: the username
 // password: the password
 func (impl *imageInterfaceImpl) Login(ctx context.Context, serverAddress, username, password string) error {
-	options := types.LoginCommandOptions{
+	opt := types.LoginCommandOptions{
 		GOptions: impl.GlobalOptions,
 		Username: username,
 		Password: password,
 	}
 	if serverAddress != "" {
-		options.ServerAddress = serverAddress
+		opt.ServerAddress = serverAddress
 	}
 
-	return login.Login(ctx, options, impl.Stdout)
+	return login.Login(ctx, opt, impl.Stdout)
 }
 
 func (impl *imageInterfaceImpl) Squash(ctx context.Context, SourceImageRef, TargetImageName string) error {
