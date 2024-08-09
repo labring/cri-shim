@@ -1,0 +1,3 @@
+[submodule "staging/github.com/lingdie/nerdctl"]
+	path = staging/github.com/lingdie/nerdctl
+	url = git@github.com:lingdie/nerdctl.git
