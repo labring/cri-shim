@@ -298,8 +298,19 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 
 		imageName := registry.GetImageRef(imageRef)
 
-		if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, false); err != nil {
-			slog.Error("failed to commit container", "error", err)
+		const maxRetries = 5
+		const retryDelay = time.Second * 2
+
+		for i := 0; i < maxRetries; i++ {
+			if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, false); err == nil {
+				break
+			}
+			slog.Error("failed to commit container", "attempt", i+1, "error", err)
+			time.Sleep(retryDelay)
+		}
+
+		if err != nil {
+			slog.Error("failed to commit container after retries", "error", err)
 			return err
 		}
 
