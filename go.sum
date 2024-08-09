@@ -47,6 +47,8 @@ github.com/containerd/imgcrypt v1.1.11 h1:3RULIeLouE7B5l9NzMq0HdPWG0DP5deEVxB5UK
 github.com/containerd/imgcrypt v1.1.11/go.mod h1:nXL4jp1GrtO758b16DVsxaHHzu9PravAsKARYmyHR58=
 github.com/containerd/log v0.1.0 h1:TCJt7ioM2cr/tfR8GPbGf9/VRAX8D2B4PjzCpfX540I=
 github.com/containerd/log v0.1.0/go.mod h1:VRRf09a7mHDIRezVKTRCrOq78v577GXq3bSa3EhrzVo=
+github.com/containerd/nerdctl v1.7.6 h1:qR6Q81clixkkwHjjBCfR7JswqjbjcoevG9T3shgNC1o=
+github.com/containerd/nerdctl v1.7.6/go.mod h1:ODDI0/gCmC13OZzr2wgJA5TvfhytK7ySNJG8PviSke4=
 github.com/containerd/nydus-snapshotter v0.13.13 h1:4eCKSNjmozLQ038G2a3X8DEwmrsHsRPMdVGX+zjcaTc=
 github.com/containerd/nydus-snapshotter v0.13.13/go.mod h1:VPVKQ3jmHFIcUIV2yiQ1kImZuBFS3GXDohKs9mRABVE=
 github.com/containerd/platforms v0.2.1 h1:zvwtM3rz2YHPQsF2CHYM8+KtB5dvhISiXh5ZpSBQv6A=
@@ -179,6 +181,8 @@ github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
 github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
+github.com/labring/layer-squash v0.1.0 h1:AM82CUtGf7pR6NcOjmKQ5XZRgFerkCbKG+GfSM6Uy70=
+github.com/labring/layer-squash v0.1.0/go.mod h1:z6VBrSlamZ9+UaXTcxeygptJ1GQiP01MCbTYtfktvK8=
 github.com/miekg/pkcs11 v1.1.1 h1:Ugu9pdy6vAYku5DEpVWVFPYnzV+bxB+iRdbuFSu7TvU=
 github.com/miekg/pkcs11 v1.1.1/go.mod h1:XsNlhZGX73bx86s2hdc/FuaLm2CPZJemRLMA+WTFxgs=
 github.com/minio/sha256-simd v1.0.1 h1:6kaan5IFmwTNynnKKpDHe6FWHohJOHhCPchzK49dzMM=

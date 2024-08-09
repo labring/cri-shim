@@ -2,8 +2,6 @@ package image
 
 import (
 	"context"
-	"github.com/labring/layer-squash/pkg/options"
-	"github.com/labring/layer-squash/pkg/runtime"
 	"io"
 
 	"github.com/containerd/containerd"
@@ -12,6 +10,8 @@ import (
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/image"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/login"
+	"github.com/labring/layer-squash/pkg/options"
+	"github.com/labring/layer-squash/pkg/runtime"
 )
 
 // ImageInterface defines the interface for image operations
