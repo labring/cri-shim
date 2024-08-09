@@ -60,6 +60,7 @@ func New(options Options, registryOptions imageutil.RegistryOptions) (*Server, e
 	if err != nil {
 		return nil, err
 	}
+
 	return &Server{
 		server:      server,
 		listener:    listener,
@@ -310,11 +311,16 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 		}
 
 		if err != nil {
-			slog.Error("failed to commit container after retries", "error", err)
+			slog.Error("failed to commit container after retries", "image name", imageName, "error", err)
 			return err
 		}
 
 		s.commitManager.NotifyCommitCompletion(id)
+
+		if err = s.imageClient.Squash(ctx, imageName, imageName); err != nil {
+			slog.Error("failed to squash image", "image name", imageName, "error", err)
+			return err
+		}
 
 		if pushFlag {
 			if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {

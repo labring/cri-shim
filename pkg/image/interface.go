@@ -2,6 +2,8 @@ package image
 
 import (
 	"context"
+	"github.com/labring/layer-squash/pkg/options"
+	"github.com/labring/layer-squash/pkg/runtime"
 	"io"
 
 	"github.com/containerd/containerd"
@@ -17,14 +19,17 @@ type ImageInterface interface {
 	Push(ctx context.Context, args string) error
 	Commit(ctx context.Context, imageName, containerID string, pause bool) error
 	Login(ctx context.Context, serverAddress, username, password string) error
+	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
 	Stop()
 }
 
 type imageInterfaceImpl struct {
 	GlobalOptions types.GlobalCommandOptions
 	Stdout        io.Writer
-	Client        *containerd.Client
 	Cancel        context.CancelFunc
+
+	Client       *containerd.Client
+	SquashClient *runtime.Runtime
 }
 
 // NewImageInterface returns a new implementation of ImageInterface
@@ -41,11 +46,16 @@ func NewImageInterface(namespace, address string, writer io.Writer) (ImageInterf
 		Stdout:        writer,
 	}
 	var err error
-	impl.Client, _, impl.Cancel, err = clientutil.NewClient(context.Background(), global.Namespace, global.Address)
-	if err != nil {
+
+	if impl.Client, _, impl.Cancel, err = clientutil.NewClient(context.Background(), global.Namespace, global.Address); err != nil {
 		return nil, err
 	}
-	return impl, err
+
+	if impl.SquashClient, err = runtime.NewRuntime(impl.Client, global.Namespace); err != nil {
+		return nil, err
+	}
+
+	return impl, nil
 }
 
 func (impl *imageInterfaceImpl) Stop() {
@@ -57,7 +67,7 @@ func (impl *imageInterfaceImpl) Stop() {
 // containerID: the ID of the container
 // pause: whether to pause the container before committing
 func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, containerID string, pause bool) error {
-	options := types.ContainerCommitOptions{
+	opt := types.ContainerCommitOptions{
 		Stdout:   impl.Stdout,
 		GOptions: impl.GlobalOptions,
 		Pause:    pause,
@@ -65,7 +75,7 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 
 	tmpName := imageName + "tmp"
 
-	if err := container.Commit(ctx, impl.Client, tmpName, containerID, options); err != nil {
+	if err := container.Commit(ctx, impl.Client, tmpName, containerID, opt); err != nil {
 		return err
 	}
 
@@ -80,12 +90,12 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 // srcRawRef: the source image reference
 // destRawRef: the destination image reference
 func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawRef string) error {
-	options := types.ImageConvertOptions{
+	opt := types.ImageConvertOptions{
 		GOptions: impl.GlobalOptions,
 		Oci:      true,
 		Stdout:   impl.Stdout,
 	}
-	return image.Convert(ctx, impl.Client, srcRawRef, destRawRef, options)
+	return image.Convert(ctx, impl.Client, srcRawRef, destRawRef, opt)
 }
 
 // remove deletes the specified image
@@ -93,24 +103,24 @@ func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawR
 // force: whether to force delete
 // async: whether to delete asynchronously
 func (impl *imageInterfaceImpl) remove(ctx context.Context, args string, force, async bool) error {
-	options := types.ImageRemoveOptions{
+	opt := types.ImageRemoveOptions{
 		Stdout:   impl.Stdout,
 		GOptions: impl.GlobalOptions,
 		Force:    force,
 		Async:    async,
 	}
-	return image.Remove(ctx, impl.Client, []string{args}, options)
+	return image.Remove(ctx, impl.Client, []string{args}, opt)
 }
 
 // Push pushes an image to a remote repository
 // args: the list of images
 func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
-	options := types.ImagePushOptions{
+	opt := types.ImagePushOptions{
 		GOptions: impl.GlobalOptions,
 		Stdout:   impl.Stdout,
 	}
 
-	return image.Push(ctx, impl.Client, args, options)
+	return image.Push(ctx, impl.Client, args, opt)
 }
 
 // Login logs in to the image registry
@@ -118,14 +128,24 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
 // username: the username
 // password: the password
 func (impl *imageInterfaceImpl) Login(ctx context.Context, serverAddress, username, password string) error {
-	options := types.LoginCommandOptions{
+	opt := types.LoginCommandOptions{
 		GOptions: impl.GlobalOptions,
 		Username: username,
 		Password: password,
 	}
 	if serverAddress != "" {
-		options.ServerAddress = serverAddress
+		opt.ServerAddress = serverAddress
 	}
 
-	return login.Login(ctx, options, impl.Stdout)
+	return login.Login(ctx, opt, impl.Stdout)
+}
+
+func (impl *imageInterfaceImpl) Squash(ctx context.Context, SourceImageRef, TargetImageName string) error {
+	opt := options.Option{
+		SourceImageRef:   SourceImageRef,
+		TargetImageName:  TargetImageName,
+		SquashLayerCount: 2,
+	}
+
+	return impl.SquashClient.Squash(ctx, opt)
 }
