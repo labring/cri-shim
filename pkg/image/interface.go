@@ -2,6 +2,8 @@ package image
 
 import (
 	"context"
+	"github.com/labring/layer-squash/pkg/options"
+	"github.com/labring/layer-squash/pkg/runtime"
 	"io"
 
 	"github.com/containerd/containerd"
@@ -17,14 +19,17 @@ type ImageInterface interface {
 	Push(ctx context.Context, args string) error
 	Commit(ctx context.Context, imageName, containerID string, pause bool) error
 	Login(ctx context.Context, serverAddress, username, password string) error
+	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
 	Stop()
 }
 
 type imageInterfaceImpl struct {
 	GlobalOptions types.GlobalCommandOptions
 	Stdout        io.Writer
-	Client        *containerd.Client
 	Cancel        context.CancelFunc
+
+	Client       *containerd.Client
+	SquashClient *runtime.Runtime
 }
 
 // NewImageInterface returns a new implementation of ImageInterface
@@ -41,11 +46,16 @@ func NewImageInterface(namespace, address string, writer io.Writer) (ImageInterf
 		Stdout:        writer,
 	}
 	var err error
-	impl.Client, _, impl.Cancel, err = clientutil.NewClient(context.Background(), global.Namespace, global.Address)
-	if err != nil {
+
+	if impl.Client, _, impl.Cancel, err = clientutil.NewClient(context.Background(), global.Namespace, global.Address); err != nil {
 		return nil, err
 	}
-	return impl, err
+
+	if impl.SquashClient, err = runtime.NewRuntime(impl.Client, global.Namespace); err != nil {
+		return nil, err
+	}
+
+	return impl, nil
 }
 
 func (impl *imageInterfaceImpl) Stop() {
@@ -128,4 +138,14 @@ func (impl *imageInterfaceImpl) Login(ctx context.Context, serverAddress, userna
 	}
 
 	return login.Login(ctx, options, impl.Stdout)
+}
+
+func (impl *imageInterfaceImpl) Squash(ctx context.Context, SourceImageRef, TargetImageName string) error {
+	opt := options.Option{
+		SourceImageRef:   SourceImageRef,
+		TargetImageName:  TargetImageName,
+		SquashLayerCount: 2,
+	}
+
+	return impl.SquashClient.Squash(ctx, opt)
 }
