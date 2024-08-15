@@ -1,5 +1,5 @@
 [Unit]
-Description=sealos containerd shim
+Description=sealos cri shim
 
 [Service]
 ExecStart=/usr/bin/cri-shim --cri-socket=unix:///var/run/containerd/containerd.sock --shim-socket=/var/run/sealos/cri-shim.sock
