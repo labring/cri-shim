@@ -94,7 +94,7 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) Version(ctx context.Context, request *runtimeapi.VersionRequest) (*runtimeapi.VersionResponse, error) {
-	slog.Info("Doing version request", "request", request)
+	slog.Debug("Doing version request", "request", request)
 	resp, err := s.client.Version(ctx, request)
 	if err != nil {
 		slog.Error("failed to get version", "error", err)
@@ -105,44 +105,45 @@ func (s *Server) Version(ctx context.Context, request *runtimeapi.VersionRequest
 }
 
 func (s *Server) RunPodSandbox(ctx context.Context, request *runtimeapi.RunPodSandboxRequest) (*runtimeapi.RunPodSandboxResponse, error) {
-	slog.Info("Doing run pod sandbox request", "request", request)
+	slog.Debug("Doing run pod sandbox request", "request", request)
 	return s.client.RunPodSandbox(ctx, request)
 }
 
 func (s *Server) StopPodSandbox(ctx context.Context, request *runtimeapi.StopPodSandboxRequest) (*runtimeapi.StopPodSandboxResponse, error) {
-	slog.Info("Doing stop pod sandbox request", "request", request)
+	slog.Debug("Doing stop pod sandbox request", "request", request)
 	return s.client.StopPodSandbox(ctx, request)
 }
 
 func (s *Server) RemovePodSandbox(ctx context.Context, request *runtimeapi.RemovePodSandboxRequest) (*runtimeapi.RemovePodSandboxResponse, error) {
-	slog.Info("Doing remove pod sandbox request", "request", request)
+	slog.Debug("Doing remove pod sandbox request", "request", request)
 	return s.client.RemovePodSandbox(ctx, request)
 }
 
 func (s *Server) PodSandboxStatus(ctx context.Context, request *runtimeapi.PodSandboxStatusRequest) (*runtimeapi.PodSandboxStatusResponse, error) {
-	slog.Info("Doing pod sandbox status request", "request", request)
+	slog.Debug("Doing pod sandbox status request", "request", request)
 	return s.client.PodSandboxStatus(ctx, request)
 }
 
 func (s *Server) ListPodSandbox(ctx context.Context, request *runtimeapi.ListPodSandboxRequest) (*runtimeapi.ListPodSandboxResponse, error) {
-	slog.Info("Doing list pod sandbox request", "request", request)
+	slog.Debug("Doing list pod sandbox request", "request", request)
 	return s.client.ListPodSandbox(ctx, request)
 }
 
 func (s *Server) CreateContainer(ctx context.Context, request *runtimeapi.CreateContainerRequest) (*runtimeapi.CreateContainerResponse, error) {
-	slog.Info("Doing create container request", "request", request)
+	slog.Debug("Doing create container request", "request", request)
 	return s.client.CreateContainer(ctx, request)
 }
 
 func (s *Server) StartContainer(ctx context.Context, request *runtimeapi.StartContainerRequest) (*runtimeapi.StartContainerResponse, error) {
-	slog.Info("Doing start container request", "request", request)
+	slog.Debug("Doing start container request", "request", request)
 	return s.client.StartContainer(ctx, request)
 }
 
 func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopContainerRequest) (*runtimeapi.StopContainerResponse, error) {
 	// todo check container env and create commit
 	slog.Info("Doing stop container request", "request", request)
-	if err := s.CommitContainer(ctx, request.ContainerId); err != nil {
+	if err := s.CommitContainer(ctx, request.ContainerId, true); err != nil {
+		slog.Error("Error happen when container commit", "error", err)
 		return nil, err
 	}
 	return s.client.StopContainer(ctx, request)
@@ -154,17 +155,22 @@ func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.Remove
 		if err := s.commitManager.WaitForCommit(request.ContainerId, ctx); err != nil {
 			slog.Error("Error happen when container commit", "error", err)
 		}
+	} else {
+		if err := s.CommitContainer(ctx, request.ContainerId, false); err != nil {
+			slog.Error("Error happen when container commit", "error", err)
+			return nil, err
+		}
 	}
 	return s.client.RemoveContainer(ctx, request)
 }
 
 func (s *Server) ListContainers(ctx context.Context, request *runtimeapi.ListContainersRequest) (*runtimeapi.ListContainersResponse, error) {
-	slog.Info("Doing list containers request", "request", request)
+	slog.Debug("Doing list containers request", "request", request)
 	return s.client.ListContainers(ctx, request)
 }
 
 func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.ContainerStatusRequest) (*runtimeapi.ContainerStatusResponse, error) {
-	slog.Info("Doing container status request", "request", request)
+	slog.Debug("Doing container status request", "request", request)
 	request.Verbose = true
 	resp, err := s.client.ContainerStatus(ctx, request)
 	if err != nil {
@@ -176,72 +182,72 @@ func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.Contai
 }
 
 func (s *Server) UpdateContainerResources(ctx context.Context, request *runtimeapi.UpdateContainerResourcesRequest) (*runtimeapi.UpdateContainerResourcesResponse, error) {
-	slog.Info("Doing update container resources request", "request", request)
+	slog.Debug("Doing update container resources request", "request", request)
 	return s.client.UpdateContainerResources(ctx, request)
 }
 
 func (s *Server) ReopenContainerLog(ctx context.Context, request *runtimeapi.ReopenContainerLogRequest) (*runtimeapi.ReopenContainerLogResponse, error) {
-	slog.Info("Doing reopen container log request", "request", request)
+	slog.Debug("Doing reopen container log request", "request", request)
 	return s.client.ReopenContainerLog(ctx, request)
 }
 
 func (s *Server) ExecSync(ctx context.Context, request *runtimeapi.ExecSyncRequest) (*runtimeapi.ExecSyncResponse, error) {
-	slog.Info("Doing exec sync request", "request", request)
+	slog.Debug("Doing exec sync request", "request", request)
 	return s.client.ExecSync(ctx, request)
 }
 
 func (s *Server) Exec(ctx context.Context, request *runtimeapi.ExecRequest) (*runtimeapi.ExecResponse, error) {
-	slog.Info("Doing exec request", "request", request)
+	slog.Debug("Doing exec request", "request", request)
 	return s.client.Exec(ctx, request)
 }
 
 func (s *Server) Attach(ctx context.Context, request *runtimeapi.AttachRequest) (*runtimeapi.AttachResponse, error) {
-	slog.Info("Doing attach request", "request", request)
+	slog.Debug("Doing attach request", "request", request)
 	return s.client.Attach(ctx, request)
 }
 
 func (s *Server) PortForward(ctx context.Context, request *runtimeapi.PortForwardRequest) (*runtimeapi.PortForwardResponse, error) {
-	slog.Info("Doing port forward request", "request", request)
+	slog.Debug("Doing port forward request", "request", request)
 	return s.client.PortForward(ctx, request)
 }
 
 func (s *Server) ContainerStats(ctx context.Context, request *runtimeapi.ContainerStatsRequest) (*runtimeapi.ContainerStatsResponse, error) {
-	slog.Info("Doing container stats request", "request", request)
+	slog.Debug("Doing container stats request", "request", request)
 	return s.client.ContainerStats(ctx, request)
 }
 
 func (s *Server) ListContainerStats(ctx context.Context, request *runtimeapi.ListContainerStatsRequest) (*runtimeapi.ListContainerStatsResponse, error) {
-	slog.Info("Doing list container stats request", "request", request)
+	slog.Debug("Doing list container stats request", "request", request)
 	return s.client.ListContainerStats(ctx, request)
 }
 
 func (s *Server) PodSandboxStats(ctx context.Context, request *runtimeapi.PodSandboxStatsRequest) (*runtimeapi.PodSandboxStatsResponse, error) {
-	slog.Info("Doing pod sandbox stats request", "request", request)
+	slog.Debug("Doing pod sandbox stats request", "request", request)
 	return s.client.PodSandboxStats(ctx, request)
 }
 
 func (s *Server) ListPodSandboxStats(ctx context.Context, request *runtimeapi.ListPodSandboxStatsRequest) (*runtimeapi.ListPodSandboxStatsResponse, error) {
-	slog.Info("Doing list pod sandbox stats request", "request", request)
+	slog.Debug("Doing list pod sandbox stats request", "request", request)
 	return s.client.ListPodSandboxStats(ctx, request)
 }
 
 func (s *Server) UpdateRuntimeConfig(ctx context.Context, request *runtimeapi.UpdateRuntimeConfigRequest) (*runtimeapi.UpdateRuntimeConfigResponse, error) {
-	slog.Info("Doing update runtime config request", "request", request)
+	slog.Debug("Doing update runtime config request", "request", request)
 	return s.client.UpdateRuntimeConfig(ctx, request)
 }
 
 func (s *Server) Status(ctx context.Context, request *runtimeapi.StatusRequest) (*runtimeapi.StatusResponse, error) {
-	slog.Info("Doing status request", "request", request)
+	slog.Debug("Doing status request", "request", request)
 	return s.client.Status(ctx, request)
 }
 
 func (s *Server) CheckpointContainer(ctx context.Context, request *runtimeapi.CheckpointContainerRequest) (*runtimeapi.CheckpointContainerResponse, error) {
-	slog.Info("Doing checkpoint container request", "request", request)
+	slog.Debug("Doing checkpoint container request", "request", request)
 	return s.client.CheckpointContainer(ctx, request)
 }
 
 func (s *Server) GetContainerEvents(request *runtimeapi.GetEventsRequest, server runtimeapi.RuntimeService_GetContainerEventsServer) error {
-	slog.Info("Doing get container events request", "request", request)
+	slog.Debug("Doing get container events request", "request", request)
 	client, err := s.client.GetContainerEvents(context.Background(), request)
 	if err != nil {
 		return err
@@ -254,25 +260,26 @@ func (s *Server) GetContainerEvents(request *runtimeapi.GetEventsRequest, server
 }
 
 func (s *Server) ListMetricDescriptors(ctx context.Context, request *runtimeapi.ListMetricDescriptorsRequest) (*runtimeapi.ListMetricDescriptorsResponse, error) {
-	slog.Info("Doing list metric descriptors request", "request", request)
+	slog.Debug("Doing list metric descriptors request", "request", request)
 	return s.client.ListMetricDescriptors(ctx, request)
 }
 
 func (s *Server) ListPodSandboxMetrics(ctx context.Context, request *runtimeapi.ListPodSandboxMetricsRequest) (*runtimeapi.ListPodSandboxMetricsResponse, error) {
-	slog.Info("Doing list pod sandbox metrics request", "request", request)
+	slog.Debug("Doing list pod sandbox metrics request", "request", request)
 	return s.client.ListPodSandboxMetrics(ctx, request)
 }
 
 func (s *Server) RuntimeConfig(ctx context.Context, request *runtimeapi.RuntimeConfigRequest) (*runtimeapi.RuntimeConfigResponse, error) {
-	slog.Info("Doing runtime config request", "request", request)
+	slog.Debug("Doing runtime config request", "request", request)
 	return s.client.RuntimeConfig(ctx, request)
 }
 
-func (s *Server) CommitContainer(ctx context.Context, id string) error {
+func (s *Server) CommitContainer(ctx context.Context, id string, managerFlag bool) error {
 	statusReq := &runtimeapi.ContainerStatusRequest{
 		ContainerId: id,
 		Verbose:     true,
 	}
+
 	statusResp, err := s.client.ContainerStatus(ctx, statusReq)
 	if err != nil {
 		slog.Error("failed to get container status", "error", err)
@@ -287,13 +294,12 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 		if _, exist := s.commitManager.Get(id); exist {
 			return errutil.ErrContainerAlreadyCommit
 		}
-		s.commitManager.Set(id)
 
-		// todo report failed to commit containers
-		// skip commit if container is not running
-		if statusResp.Status.State != runtimeapi.ContainerState_CONTAINER_RUNNING {
-			// do something, should we remove container if we can't commit it?
+		if managerFlag {
+			s.commitManager.Set(id)
 		}
+
+		pauseFlag := statusResp.Status.State == runtimeapi.ContainerState_CONTAINER_RUNNING
 
 		ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
 
@@ -303,7 +309,7 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 		const retryDelay = time.Second * 2
 
 		for i := 0; i < maxRetries; i++ {
-			if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, false); err == nil {
+			if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, pauseFlag); err == nil {
 				break
 			}
 			slog.Error("failed to commit container", "attempt", i+1, "error", err)
@@ -315,7 +321,9 @@ func (s *Server) CommitContainer(ctx context.Context, id string) error {
 			return err
 		}
 
-		s.commitManager.NotifyCommitCompletion(id)
+		if managerFlag {
+			s.commitManager.NotifyCommitCompletion(id)
+		}
 
 		if err = s.imageClient.Squash(ctx, imageName, imageName); err != nil {
 			slog.Error("failed to squash image", "image name", imageName, "error", err)
@@ -365,6 +373,13 @@ func (s *Server) GetInfoFromContainerEnv(resp *runtimeapi.ContainerStatusRespons
 	}
 	slog.Debug("Got container env", "registry", registryName, "user", userName, "password", password, "image", imageName, "repo", repo, "commitOnStop", commitOnStop)
 
+	commitFlag := false
+	if commitOnStop == types.ContainerCommitOnStopEnvEnableValue {
+		commitFlag = true
+	} else {
+		return nil, "", false, false, nil
+	}
+
 	if imageName == "" {
 		imageName = resp.Status.Image.Image
 		parts := strings.Split(imageName, "/")
@@ -378,11 +393,6 @@ func (s *Server) GetInfoFromContainerEnv(resp *runtimeapi.ContainerStatusRespons
 		UserName:     userName,
 		Password:     password,
 		Repository:   repo,
-	}
-
-	commitFlag := false
-	if commitOnStop == types.ContainerCommitOnStopEnvEnableValue {
-		commitFlag = true
 	}
 
 	pushFlag := true
