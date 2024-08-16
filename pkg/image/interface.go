@@ -118,6 +118,7 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
 	opt := types.ImagePushOptions{
 		GOptions: impl.GlobalOptions,
 		Stdout:   impl.Stdout,
+		Quiet:    true,
 	}
 
 	return image.Push(ctx, impl.Client, args, opt)
