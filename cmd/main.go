@@ -13,6 +13,7 @@ import (
 )
 
 var criSocket, shimSocket, globalRegistryAddr, globalRegistryUser, globalRegistryPassword, globalRegistryRepo, containerdNamespace string
+var poolSize int
 var debug bool
 
 func main() {
@@ -23,6 +24,7 @@ func main() {
 	flag.StringVar(&globalRegistryPassword, "global-registry-password", "", "Global registry password")
 	flag.StringVar(&globalRegistryRepo, "global-registry-repository", "", "Global registry repository")
 	flag.StringVar(&containerdNamespace, "containerd-namespace", "k8s.io", "Containerd namespace")
+	flag.IntVar(&poolSize, "pool-size", 100, "Pool size")
 
 	flag.BoolVar(&debug, "debug", false, "enable debug logging")
 	flag.Parse()
@@ -33,6 +35,7 @@ func main() {
 			ShimSocket:          shimSocket,
 			CRISocket:           criSocket,
 			ContainerdNamespace: containerdNamespace,
+			PoolSize:            poolSize,
 		},
 		imageutil.RegistryOptions{
 			RegistryAddr: globalRegistryAddr,

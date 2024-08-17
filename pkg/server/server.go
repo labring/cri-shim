@@ -34,6 +34,8 @@ type Options struct {
 	Group int
 	// Mode is the permission mode bits for our gRPC socket.
 	Mode os.FileMode
+	// PoolSize is the size of the pool of goroutines.
+	PoolSize int
 }
 
 type Server struct {
@@ -70,7 +72,7 @@ func New(options Options, registryOptions imageutil.RegistryOptions) (*Server, e
 		globalRegistryOptions: registryOptions,
 	}
 
-	if s.pool, err = NewPool(100, s.client, s.CommitContainer); err != nil {
+	if s.pool, err = NewPool(options.PoolSize, s.client, s.CommitContainer); err != nil {
 		return nil, err
 	}
 	return s, nil
