@@ -97,3 +97,8 @@ systemd/install:
 	sudo systemctl daemon-reload
 	sudo systemctl enable cri-shim
 	sudo systemctl start cri-shim
+
+systemd/update: build
+	sudo systemctl stop cri-shim
+	cp ./bin/${BINARY_NAME} /usr/bin/${BINARY_NAME}
+	sudo systemctl start cri-shim
