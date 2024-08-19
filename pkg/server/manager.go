@@ -42,8 +42,8 @@ func (cm *CommitManager) Remove(key string) {
 	}
 }
 
-// NotifyCommitCompletion sends a signal to waitCh
-func (cm *CommitManager) NotifyCommitCompletion(id string) {
+// Notify sends a signal to waitCh
+func (cm *CommitManager) Notify(id string) {
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
 	if ch, exists := cm.waitCh[id]; exists {
