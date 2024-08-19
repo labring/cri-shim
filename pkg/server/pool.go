@@ -21,9 +21,10 @@ type Pool struct {
 
 func NewPool(capability int, client runtimeapi.RuntimeServiceClient, f func(task types.Task) error) (*Pool, error) {
 	p := &Pool{
-		Capability: capability,
-		queues:     make(map[string]chan types.Task),
-		client:     client,
+		Capability:        capability,
+		queues:            make(map[string]chan types.Task),
+		containerStateMap: make(map[string]runtimeapi.ContainerState),
+		client:            client,
 	}
 
 	var err error
