@@ -194,15 +194,17 @@ func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.Contai
 		slog.Error("failed to get container env", "error", err)
 		return nil, err
 	}
+	resp, err := s.client.ContainerStatus(ctx, request)
 	if commitFlag {
 		slog.Info("commit flag found when doing container status request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
-			Ctx:         ctx,
-			Kind:        types.KindStatus,
-			ContainerID: request.ContainerId,
+			Ctx:            ctx,
+			Kind:           types.KindStatus,
+			ContainerID:    request.ContainerId,
+			ContainerState: resp.Status.State,
 		})
 	}
-	return s.client.ContainerStatus(ctx, request)
+	return resp, err
 }
 
 func (s *Server) UpdateContainerResources(ctx context.Context, request *runtimeapi.UpdateContainerResourcesRequest) (*runtimeapi.UpdateContainerResourcesResponse, error) {
