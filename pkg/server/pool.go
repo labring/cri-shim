@@ -6,23 +6,22 @@ import (
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"log/slog"
 	"sync"
-	"time"
 )
 
 // Pool is a pool of goroutines
 type Pool struct {
 	pool       *ants.PoolWithFunc
 	Capability int
-	time       map[string]time.Time
-	queues     map[string]chan types.Task
-	mutex      sync.Mutex
-	client     runtimeapi.RuntimeServiceClient
+
+	containerStateMap map[string]runtimeapi.ContainerState
+	queues            map[string]chan types.Task
+	mutex             sync.Mutex
+	client            runtimeapi.RuntimeServiceClient
 }
 
 func NewPool(capability int, client runtimeapi.RuntimeServiceClient, f func(task types.Task) error) (*Pool, error) {
 	p := &Pool{
 		Capability: capability,
-		time:       make(map[string]time.Time),
 		queues:     make(map[string]chan types.Task),
 		client:     client,
 	}
@@ -42,13 +41,28 @@ func (p *Pool) Close() {
 }
 
 func (p *Pool) SubmitTask(task types.Task) {
-	lastTime, exists := p.getTime(task.ContainerID)
-	// if the task is a remove task, a stop task, or the container does not commit before, or the last task is more than 10 minutes ago add the task to the queue
-	if task.Kind == types.KindRemove || task.Kind == types.KindStop || !exists || time.Since(lastTime) > 10*time.Minute {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	if task.Kind == types.KindStatus {
+		if state, exists := p.containerStateMap[task.ContainerID]; exists {
+			if state == task.ContainerState {
+				slog.Debug("Skip task, same state", "ContainerID", task.ContainerID, "Kind", task.Kind)
+			} else if state != task.ContainerState && state != runtimeapi.ContainerState_CONTAINER_UNKNOWN && task.ContainerState != runtimeapi.ContainerState_CONTAINER_UNKNOWN {
+				slog.Info("Add task to the queue because container state changed", "ContainerID", task.ContainerID, "Kind", task.Kind)
+				p.containerStateMap[task.ContainerID] = task.ContainerState
+				p.getQueue(task.ContainerID) <- task
+			} else {
+				slog.Error("Skip task, invalid state", "ContainerID", task.ContainerID, "Kind", task.Kind, "State", state, "NewState", task.ContainerState)
+			}
+		} else {
+			slog.Debug("Skip task, no state", "ContainerID", task.ContainerID, "Kind", task.Kind)
+		}
+	} else {
 		slog.Info("Add task to the queue", "ContainerID", task.ContainerID, "Kind", task.Kind)
-		p.setTime(task.ContainerID, time.Now())
 		p.getQueue(task.ContainerID) <- task
 	}
+	// update the container state
+	p.containerStateMap[task.ContainerID] = task.ContainerState
 }
 
 func (p *Pool) getQueue(containerID string) chan types.Task {
@@ -71,19 +85,6 @@ func (p *Pool) startConsumer(queue chan types.Task) {
 	}
 }
 
-func (p *Pool) getTime(containerID string) (time.Time, bool) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	value, exists := p.time[containerID]
-	return value, exists
-}
-
-func (p *Pool) setTime(containerID string, t time.Time) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	p.time[containerID] = t
-}
-
 // ClearTasks clears all tasks in the queue associated with the given containerID without closing the channel
 func (p *Pool) ClearTasks(containerID string) {
 	p.mutex.Lock()
@@ -98,6 +99,7 @@ func (p *Pool) ClearTasks(containerID string) {
 			}
 		}
 	}
+	delete(p.containerStateMap, containerID)
 	if ch, exists := p.queues[containerID]; exists {
 		close(ch)
 		delete(p.queues, containerID)
