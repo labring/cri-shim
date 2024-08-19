@@ -300,12 +300,13 @@ func (s *Server) RuntimeConfig(ctx context.Context, request *runtimeapi.RuntimeC
 
 func (s *Server) CommitContainer(task types.Task) error {
 	slog.Info("Doing commit container task", "task", task)
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Minute)
 	statusReq := &runtimeapi.ContainerStatusRequest{
 		ContainerId: task.ContainerID,
 		Verbose:     true,
 	}
 
-	statusResp, err := s.client.ContainerStatus(task.Ctx, statusReq)
+	statusResp, err := s.client.ContainerStatus(ctx, statusReq)
 	if err != nil {
 		slog.Error("failed to get container status", "error", err)
 		return err
@@ -320,7 +321,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 	//commit image
 
 	pauseFlag := statusResp.Status.State == runtimeapi.ContainerState_CONTAINER_RUNNING
-	ctx := namespaces.WithNamespace(task.Ctx, s.options.ContainerdNamespace)
+	ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
 	imageName := registry.GetImageRef(imageRef)
 
 	const maxRetries = 5
