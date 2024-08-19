@@ -65,11 +65,8 @@ func (p *Pool) SubmitTask(task types.Task) {
 }
 
 func (p *Pool) getQueue(containerID string) chan types.Task {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	if _, exists := p.queues[containerID]; !exists {
-		queue := make(chan types.Task, 10)
+		queue := make(chan types.Task, 20)
 		p.queues[containerID] = queue
 		go p.startConsumer(queue)
 	}

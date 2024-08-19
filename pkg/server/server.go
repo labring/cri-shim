@@ -156,7 +156,6 @@ func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopCont
 	if commitFlag {
 		slog.Info("commit flag found when doing stop container request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
-			Ctx:         ctx,
 			Kind:        types.KindStop,
 			ContainerID: request.ContainerId,
 		})
@@ -173,7 +172,6 @@ func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.Remove
 	if commitFlag {
 		slog.Info("commit flag found when doing remove container request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
-			Ctx:         ctx,
 			Kind:        types.KindRemove,
 			ContainerID: request.ContainerId,
 		})
@@ -198,7 +196,6 @@ func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.Contai
 	if commitFlag {
 		slog.Info("commit flag found when doing container status request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
-			Ctx:            ctx,
 			Kind:           types.KindStatus,
 			ContainerID:    request.ContainerId,
 			ContainerState: resp.Status.State,
