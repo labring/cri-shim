@@ -62,8 +62,6 @@ func (p *Pool) SubmitTask(task types.Task) {
 		slog.Info("Add task to the queue", "ContainerID", task.ContainerID, "Kind", task.Kind)
 		p.getQueue(task.ContainerID) <- task
 	}
-	// update the container state
-	p.containerStateMap[task.ContainerID] = task.ContainerState
 }
 
 func (p *Pool) getQueue(containerID string) chan types.Task {
@@ -80,6 +78,7 @@ func (p *Pool) getQueue(containerID string) chan types.Task {
 
 func (p *Pool) startConsumer(queue chan types.Task) {
 	for task := range queue {
+		slog.Info("Start to process task", "ContainerID", task.ContainerID, "Kind", task.Kind)
 		if err := p.pool.Invoke(task); err != nil {
 			slog.Error("Error happen when container commit", "error", err)
 		}
