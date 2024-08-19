@@ -154,11 +154,11 @@ func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopCont
 		return nil, err
 	}
 	if commitFlag {
-		s.pool.Manager.Set(request.ContainerId)
+		slog.Info("commit flag found when doing stop container request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
 			Ctx:         ctx,
+			Kind:        types.KindStop,
 			ContainerID: request.ContainerId,
-			RemoveFlag:  true,
 		})
 	}
 	return s.client.StopContainer(ctx, request)
@@ -170,31 +170,15 @@ func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.Remove
 	if err != nil {
 		return nil, err
 	}
-
 	if commitFlag {
-		s.pool.ClearTasks(request.ContainerId)
-
-		if _, exist := s.pool.Manager.Get(request.ContainerId); exist {
-			if err = s.pool.Manager.WaitForCommit(request.ContainerId, ctx); err != nil {
-				slog.Error("Error happen when container commit", "error", err)
-				return nil, err
-			}
-		} else {
-			s.pool.Manager.Set(request.ContainerId)
-			s.pool.SubmitTask(types.Task{
-				Ctx:         ctx,
-				ContainerID: request.ContainerId,
-				RemoveFlag:  true,
-			})
-			if err = s.pool.Manager.WaitForCommit(request.ContainerId, ctx); err != nil {
-				slog.Error("Error happen when container commit", "error", err)
-				return nil, err
-			}
-		}
-
-		return s.pool.Remove(ctx, request)
+		slog.Info("commit flag found when doing remove container request", "container id", request.ContainerId)
+		s.pool.SubmitTask(types.Task{
+			Ctx:         ctx,
+			Kind:        types.KindRemove,
+			ContainerID: request.ContainerId,
+		})
+		return nil, nil
 	}
-
 	return s.client.RemoveContainer(ctx, request)
 }
 
@@ -205,28 +189,20 @@ func (s *Server) ListContainers(ctx context.Context, request *runtimeapi.ListCon
 
 func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.ContainerStatusRequest) (*runtimeapi.ContainerStatusResponse, error) {
 	slog.Debug("Doing container status request", "request", request)
-	request.Verbose = true
-	resp, err := s.client.ContainerStatus(ctx, request)
-	if err != nil {
-		slog.Error("failed to get container status", "error", err)
-		return resp, err
-	}
-	_, _, commitFlag, _, err := s.GetInfoFromContainerEnv(resp)
+	commitFlag, err := s.CheckCommitFlag(ctx, request.ContainerId)
 	if err != nil {
 		slog.Error("failed to get container env", "error", err)
-		return resp, err
+		return nil, err
 	}
-
 	if commitFlag {
+		slog.Info("commit flag found when doing container status request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
 			Ctx:         ctx,
+			Kind:        types.KindStatus,
 			ContainerID: request.ContainerId,
-			RemoveFlag:  false,
 		})
 	}
-
-	slog.Debug("Got container status response", "response", resp)
-	return resp, err
+	return s.client.ContainerStatus(ctx, request)
 }
 
 func (s *Server) UpdateContainerResources(ctx context.Context, request *runtimeapi.UpdateContainerResourcesRequest) (*runtimeapi.UpdateContainerResourcesResponse, error) {
@@ -323,6 +299,7 @@ func (s *Server) RuntimeConfig(ctx context.Context, request *runtimeapi.RuntimeC
 }
 
 func (s *Server) CommitContainer(task types.Task) error {
+	slog.Info("Doing commit container task", "task", task)
 	statusReq := &runtimeapi.ContainerStatusRequest{
 		ContainerId: task.ContainerID,
 		Verbose:     true,
@@ -334,65 +311,74 @@ func (s *Server) CommitContainer(task types.Task) error {
 		return err
 	}
 
-	registry, imageRef, commitFlag, pushFlag, err := s.GetInfoFromContainerEnv(statusResp)
+	registry, imageRef, _, pushFlag, err := s.GetInfoFromContainerStatusResp(statusResp)
 
-	//commit image
-	if commitFlag && err == nil {
-
-		if _, exist := s.pool.Manager.Get(task.ContainerID); exist {
-			return nil
-		}
-
-		pauseFlag := statusResp.Status.State == runtimeapi.ContainerState_CONTAINER_RUNNING
-
-		ctx := namespaces.WithNamespace(task.Ctx, s.options.ContainerdNamespace)
-
-		imageName := registry.GetImageRef(imageRef)
-
-		const maxRetries = 5
-		const retryDelay = time.Second * 2
-
-		for i := 0; i < maxRetries; i++ {
-			if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, pauseFlag); err == nil {
-				break
-			}
-			slog.Error("failed to commit container", "attempt", i+1, "error", err)
-			time.Sleep(retryDelay)
-		}
-
-		if err != nil {
-			slog.Error("failed to commit container after retries", "image name", imageName, "error", err)
-			return err
-		}
-
-		//notify to remove the container
-		if task.RemoveFlag {
-			s.pool.Manager.Notify(task.ContainerID)
-		}
-
-		if err = s.imageClient.Squash(ctx, imageName, imageName); err != nil {
-			slog.Error("failed to squash image", "image name", imageName, "error", err)
-			return err
-		}
-
-		if pushFlag {
-			if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
-				slog.Error("failed to login register", "error", err)
-				return err
-			}
-
-			if err = s.imageClient.Push(ctx, imageName); err != nil {
-				slog.Error("failed to push container", "error", err)
-				return err
-			}
-		} else {
-			slog.Error("not push container", "error", errutil.ErrPasswordNotFound)
-		}
+	if err != nil {
+		slog.Error("failed to get container env", "error", err)
+		return err
 	}
+	//commit image
+
+	pauseFlag := statusResp.Status.State == runtimeapi.ContainerState_CONTAINER_RUNNING
+	ctx := namespaces.WithNamespace(task.Ctx, s.options.ContainerdNamespace)
+	imageName := registry.GetImageRef(imageRef)
+
+	const maxRetries = 5
+	const retryDelay = time.Second * 2
+
+	for i := 0; i < maxRetries; i++ {
+		if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, pauseFlag); err == nil {
+			break
+		}
+		slog.Error("failed to commit container", "attempt", i+1, "error", err)
+		time.Sleep(retryDelay)
+	}
+
+	if err != nil {
+		slog.Error("failed to commit container after retries", "image name", imageName, "error", err)
+		return err
+	}
+
+	if err = s.imageClient.Squash(ctx, imageName, imageName); err != nil {
+		slog.Error("failed to squash image", "image name", imageName, "error", err)
+		return err
+	}
+
+	if pushFlag {
+		if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
+			slog.Error("failed to login register", "error", err)
+			return err
+		}
+
+		if err = s.imageClient.Push(ctx, imageName); err != nil {
+			slog.Error("failed to push container", "error", err, "image name", imageName)
+			return err
+		}
+	} else {
+		slog.Info("did not push container", "image name", imageName)
+	}
+
+	switch task.Kind {
+	case types.KindRemove:
+		// do remove container request
+		removeReq := &runtimeapi.RemoveContainerRequest{
+			ContainerId: task.ContainerID,
+		}
+		if _, err = s.client.RemoveContainer(ctx, removeReq); err != nil {
+			slog.Error("failed to remove container", "error", err)
+			return err
+		}
+		s.pool.ClearTasks(task.ContainerID)
+	case types.KindStop:
+		// do nothing
+	case types.KindStatus:
+		// do nothing
+	}
+
 	return nil
 }
 
-func (s *Server) GetInfoFromContainerEnv(resp *runtimeapi.ContainerStatusResponse) (*imageutil.Registry, string, bool, bool, error) {
+func (s *Server) GetInfoFromContainerStatusResp(resp *runtimeapi.ContainerStatusResponse) (*imageutil.Registry, string, bool, bool, error) {
 	info := &container.Info{}
 	if err := json.Unmarshal([]byte(resp.Info["info"]), info); err != nil {
 		slog.Error("failed to unmarshal container info", "error", err)
@@ -442,7 +428,7 @@ func (s *Server) GetInfoFromContainerEnv(resp *runtimeapi.ContainerStatusRespons
 	pushFlag := true
 	if userName != "" && password == "" {
 		pushFlag = false
-		slog.Error("not found password", "error", errutil.ErrPasswordNotFound)
+		slog.Error("not found password", "error", errutil.ErrPasswordNotFound, "username", userName, "container id", resp.Status.Id)
 	}
 
 	return imageutil.NewRegistry(s.globalRegistryOptions, envRegistryOpt, s.options.ContainerdNamespace, sealosUsername), imageName, commitFlag, pushFlag, nil
@@ -456,13 +442,13 @@ func (s *Server) CheckCommitFlag(ctx context.Context, ContainerID string) (bool,
 
 	statusResp, err := s.client.ContainerStatus(ctx, statusReq)
 	if err != nil {
-		slog.Error("failed to get container status", "error", err)
+		slog.Error("failed to get container status", "error", err, "container id", ContainerID)
 		return false, err
 	}
 
-	_, _, commitFlag, _, err := s.GetInfoFromContainerEnv(statusResp)
+	_, _, commitFlag, _, err := s.GetInfoFromContainerStatusResp(statusResp)
 	if err != nil {
-		slog.Error("failed to get container env", "error", err)
+		slog.Error("failed to get container env", "error", err, "container id", ContainerID)
 		return false, err
 	}
 	return commitFlag, nil
