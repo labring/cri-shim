@@ -319,7 +319,6 @@ func (s *Server) CommitContainer(task types.Task) error {
 	}
 	//commit image
 
-	pauseFlag := statusResp.Status.State == runtimeapi.ContainerState_CONTAINER_RUNNING
 	ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
 	imageName := registry.GetImageRef(imageRef)
 
@@ -327,7 +326,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 	const retryDelay = time.Second * 2
 
 	for i := 0; i < maxRetries; i++ {
-		if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, pauseFlag); err == nil {
+		if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, false); err == nil {
 			break
 		}
 		slog.Error("failed to commit container", "attempt", i+1, "error", err)

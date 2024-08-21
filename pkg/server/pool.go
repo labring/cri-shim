@@ -14,6 +14,7 @@ type Pool struct {
 	Capability int
 
 	containerStateMap map[string]runtimeapi.ContainerState
+	commitFinMap      map[string]bool
 	queues            map[string]chan types.Task
 	mutex             sync.Mutex
 	client            runtimeapi.RuntimeServiceClient
@@ -24,6 +25,7 @@ func NewPool(capability int, client runtimeapi.RuntimeServiceClient, f func(task
 		Capability:        capability,
 		queues:            make(map[string]chan types.Task),
 		containerStateMap: make(map[string]runtimeapi.ContainerState),
+		commitFinMap:      make(map[string]bool),
 		client:            client,
 	}
 
@@ -44,6 +46,10 @@ func (p *Pool) Close() {
 func (p *Pool) SubmitTask(task types.Task) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	if p.commitFinMap[task.ContainerID] {
+		slog.Info("Skip task, commit finished", "ContainerID", task.ContainerID, "Kind", task.Kind)
+		return
+	}
 	if task.Kind == types.KindStatus {
 		if state, exists := p.containerStateMap[task.ContainerID]; exists {
 			if state == task.ContainerState {
@@ -74,10 +80,17 @@ func (p *Pool) getQueue(containerID string) chan types.Task {
 }
 
 func (p *Pool) startConsumer(queue chan types.Task) {
-	for task := range queue {
-		slog.Info("Start to process task", "ContainerID", task.ContainerID, "Kind", task.Kind)
-		if err := p.pool.Invoke(task); err != nil {
-			slog.Error("Error happen when container commit", "error", err)
+	for {
+		select {
+		case task, ok := <-queue:
+			if !ok {
+				slog.Info("Queue closed", "ContainerID", task.ContainerID)
+				return
+			}
+			slog.Info("Start to process task", "ContainerID", task.ContainerID, "Kind", task.Kind)
+			if err := p.pool.Invoke(task); err != nil {
+				slog.Error("Error happen when container commit", "error", err)
+			}
 		}
 	}
 }
@@ -86,6 +99,7 @@ func (p *Pool) startConsumer(queue chan types.Task) {
 func (p *Pool) ClearTasks(containerID string) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	p.commitFinMap[containerID] = true
 	if queue, exists := p.queues[containerID]; exists {
 		for {
 			select {
