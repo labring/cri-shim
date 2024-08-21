@@ -5,7 +5,7 @@ go 1.22.4
 require (
 	github.com/containerd/containerd v1.7.20
 	github.com/containerd/nerdctl/v2 v2.0.0-rc.0
-	github.com/labring/layer-squash v0.1.0
+	github.com/labring/layer-squash v0.2.0
 	github.com/panjf2000/ants/v2 v2.10.0
 	google.golang.org/grpc v1.65.0
 	k8s.io/apimachinery v0.30.3

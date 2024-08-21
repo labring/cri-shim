@@ -2,7 +2,10 @@ package image
 
 import (
 	"context"
+	"fmt"
+	"github.com/containerd/containerd/leases"
 	"io"
+	"time"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
@@ -147,6 +150,12 @@ func (impl *imageInterfaceImpl) Squash(ctx context.Context, SourceImageRef, Targ
 		TargetImageName:  TargetImageName,
 		SquashLayerCount: 2,
 	}
+
+	ctx, done, err := impl.Client.WithLease(ctx, leases.WithRandomID(), leases.WithExpiration(1*time.Hour))
+	if err != nil {
+		return fmt.Errorf("failed to create lease for squash: %w", err)
+	}
+	defer done(ctx)
 
 	return impl.SquashClient.Squash(ctx, opt)
 }
