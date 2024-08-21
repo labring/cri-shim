@@ -321,12 +321,13 @@ func (s *Server) CommitContainer(task types.Task) error {
 
 	ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
 	imageName := registry.GetImageRef(imageRef)
+	initialImageName := imageName + "-initial"
 
 	const maxRetries = 5
 	const retryDelay = time.Second * 2
 
 	for i := 0; i < maxRetries; i++ {
-		if err = s.imageClient.Commit(ctx, imageName, statusResp.Status.Id, false); err == nil {
+		if err = s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err == nil {
 			break
 		}
 		slog.Error("failed to commit container", "attempt", i+1, "error", err)
@@ -334,14 +335,14 @@ func (s *Server) CommitContainer(task types.Task) error {
 	}
 
 	if err != nil {
-		slog.Error("failed to commit container after retries", "image name", imageName, "error", err)
+		slog.Error("failed to commit container after retries", "image name", initialImageName, "error", err)
 		return err
 	}
 
-	//if err = s.imageClient.Squash(ctx, imageName, imageName); err != nil {
-	//	slog.Error("failed to squash image", "image name", imageName, "error", err)
-	//	return err
-	//}
+	if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
+		slog.Error("failed to squash image", "image name", imageName, "error", err)
+		return err
+	}
 
 	if pushFlag {
 		if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
