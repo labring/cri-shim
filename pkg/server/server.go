@@ -338,10 +338,10 @@ func (s *Server) CommitContainer(task types.Task) error {
 		return err
 	}
 
-	if err = s.imageClient.Squash(ctx, imageName, imageName); err != nil {
-		slog.Error("failed to squash image", "image name", imageName, "error", err)
-		return err
-	}
+	//if err = s.imageClient.Squash(ctx, imageName, imageName); err != nil {
+	//	slog.Error("failed to squash image", "image name", imageName, "error", err)
+	//	return err
+	//}
 
 	if pushFlag {
 		if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
