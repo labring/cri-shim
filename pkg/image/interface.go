@@ -23,6 +23,7 @@ type ImageInterface interface {
 	Commit(ctx context.Context, imageName, containerID string, pause bool) error
 	Login(ctx context.Context, serverAddress, username, password string) error
 	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
+	Remove(ctx context.Context, args string, force, async bool) error
 	Stop()
 }
 
@@ -86,7 +87,7 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 		return err
 	}
 
-	return impl.remove(ctx, tmpName, true, false)
+	return impl.Remove(ctx, tmpName, false, false)
 }
 
 // convert converts an image to the specified format
@@ -101,11 +102,11 @@ func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawR
 	return image.Convert(ctx, impl.Client, srcRawRef, destRawRef, opt)
 }
 
-// remove deletes the specified image
+// Remove deletes the specified image
 // args: the list of images
 // force: whether to force delete
 // async: whether to delete asynchronously
-func (impl *imageInterfaceImpl) remove(ctx context.Context, args string, force, async bool) error {
+func (impl *imageInterfaceImpl) Remove(ctx context.Context, args string, force, async bool) error {
 	opt := types.ImageRemoveOptions{
 		Stdout:   impl.Stdout,
 		GOptions: impl.GlobalOptions,

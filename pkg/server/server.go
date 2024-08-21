@@ -339,6 +339,8 @@ func (s *Server) CommitContainer(task types.Task) error {
 		return err
 	}
 
+	defer s.imageClient.Remove(ctx, initialImageName, false, false)
+
 	if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
 		slog.Error("failed to squash image", "image name", imageName, "error", err)
 		return err
