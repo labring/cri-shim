@@ -195,6 +195,20 @@ func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopCont
 
 func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.RemoveContainerRequest) (*runtimeapi.RemoveContainerResponse, error) {
 	slog.Info("Doing remove container request", "request", request)
+
+	resp, err := s.client.ContainerStatus(ctx, &runtimeapi.ContainerStatusRequest{
+		ContainerId: request.ContainerId,
+		Verbose:     false,
+	})
+	if err != nil {
+		slog.Error("failed to get container status", "error", err)
+		return nil, err
+	}
+	if resp.Status.State == runtimeapi.ContainerState_CONTAINER_UNKNOWN {
+		slog.Error("unknown container", "container id", request.ContainerId)
+		return s.client.RemoveContainer(ctx, request)
+	}
+
 	commitFlag, err := s.CheckCommitFlag(ctx, request.ContainerId)
 	if err != nil {
 		return nil, err
