@@ -17,6 +17,7 @@ type Pool struct {
 	ContainerCommittingLock map[string]*sync.Mutex
 	containerStateMap       map[string]runtimeapi.ContainerState
 	containerFinMap         map[string]bool
+	CommitStatusMap         map[string]types.CommitStatus
 
 	queues map[string]chan types.Task
 	mutex  sync.Mutex
@@ -30,6 +31,7 @@ func NewPool(capability int, client runtimeapi.RuntimeServiceClient, f func(task
 		containerStateMap:       make(map[string]runtimeapi.ContainerState),
 		ContainerCommittingLock: make(map[string]*sync.Mutex),
 		containerFinMap:         make(map[string]bool),
+		CommitStatusMap:         make(map[string]types.CommitStatus),
 		client:                  client,
 	}
 
@@ -126,4 +128,21 @@ func (p *Pool) ClearTasks(containerID string) {
 		slog.Info("Queue destroyed", "ContainerID", containerID)
 	}
 	slog.Info("Tasks cleared", "ContainerID", containerID)
+}
+
+func (p *Pool) SetCommitStatus(containerID string, status types.CommitStatus) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	if _, exists := p.CommitStatusMap[containerID]; !exists {
+		p.CommitStatusMap[containerID] = status
+	}
+}
+
+func (p *Pool) GetCommitStatus(containerID string) (bool, types.CommitStatus) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	if status, exists := p.CommitStatusMap[containerID]; exists {
+		return exists, status
+	}
+	return false, types.NoneCommit
 }
