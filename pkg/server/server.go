@@ -345,56 +345,65 @@ func (s *Server) CommitContainer(task types.Task) error {
 
 	defer s.pool.ContainerCommittingLock[task.ContainerID].Unlock()
 
+	commitFlag := true
+	if status, exists := s.pool.CommitStatusMap[task.ContainerID]; exists {
+		commitFlag = types.StopCommit != status
+	}
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Minute)
-	statusReq := &runtimeapi.ContainerStatusRequest{
-		ContainerId: task.ContainerID,
-		Verbose:     true,
-	}
 
-	statusResp, err := s.client.ContainerStatus(ctx, statusReq)
-	if err != nil {
-		slog.Error("failed to get container status", "error", err)
-		return err
-	}
+	if commitFlag {
+		statusReq := &runtimeapi.ContainerStatusRequest{
+			ContainerId: task.ContainerID,
+			Verbose:     true,
+		}
 
-	registry, imageRef, _, pushFlag, err := s.GetInfoFromContainerStatusResp(statusResp)
-
-	if err != nil {
-		slog.Error("failed to get container env", "error", err)
-		return err
-	}
-	//commit image
-
-	ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
-	imageName := registry.GetImageRef(imageRef)
-	initialImageName := imageName + "-initial"
-
-	if err := retry.Do(func() error {
-		return s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false)
-	}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)); err != nil {
-		slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
-		return err
-	}
-
-	defer s.imageClient.Remove(ctx, initialImageName, false, false)
-
-	if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
-		slog.Error("failed to squash image", "image name", imageName, "error", err)
-		return err
-	}
-
-	if pushFlag {
-		if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
-			slog.Error("failed to login register", "error", err)
+		statusResp, err := s.client.ContainerStatus(ctx, statusReq)
+		if err != nil {
+			slog.Error("failed to get container status", "error", err)
 			return err
 		}
 
-		if err = s.imageClient.Push(ctx, imageName); err != nil {
-			slog.Error("failed to push container", "error", err, "image name", imageName)
+		registry, imageRef, _, pushFlag, err := s.GetInfoFromContainerStatusResp(statusResp)
+
+		if err != nil {
+			slog.Error("failed to get container env", "error", err)
 			return err
 		}
-	} else {
-		slog.Debug("did not push container", "image name", imageName)
+		//commit image
+
+		ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
+		imageName := registry.GetImageRef(imageRef)
+		initialImageName := imageName + "-initial"
+
+		if err := retry.Do(func() error {
+			return s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false)
+		}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)); err != nil {
+			slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
+			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+			return err
+		}
+
+		defer s.imageClient.Remove(ctx, initialImageName, false, false)
+
+		if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
+			slog.Error("failed to squash image", "image name", imageName, "error", err)
+			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+			return err
+		}
+
+		if pushFlag {
+			if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
+				slog.Error("failed to login register", "error", err)
+				return err
+			}
+
+			if err = s.imageClient.Push(ctx, imageName); err != nil {
+				slog.Error("failed to push container", "error", err, "image name", imageName)
+				return err
+			}
+		} else {
+			slog.Debug("did not push container", "image name", imageName)
+		}
 	}
 
 	switch task.Kind {
@@ -402,9 +411,12 @@ func (s *Server) CommitContainer(task types.Task) error {
 		s.pool.ClearTasks(task.ContainerID)
 		// do remove container request, ignore error
 		_, _ = s.client.RemoveContainer(ctx, &runtimeapi.RemoveContainerRequest{ContainerId: task.ContainerID})
+		s.pool.SetCommitStatus(task.ContainerID, types.RemoveCommit)
 	case types.KindStop:
+		s.pool.SetCommitStatus(task.ContainerID, types.StopCommit)
 		// do nothing
 	case types.KindStatus:
+		s.pool.SetCommitStatus(task.ContainerID, types.StatusCommit)
 		// do nothing
 	}
 
