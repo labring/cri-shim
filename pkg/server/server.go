@@ -113,7 +113,6 @@ func (s *Server) PoolStatus() error {
 			s.pool.mutex.Lock()
 			slog.Info("Pool status", "finished containers", s.pool.containerFinMap)
 			slog.Info("Pool status", "containers state", s.pool.containerStateMap)
-			slog.Info("Pool status", "containers committing", s.pool.containerCommitting)
 			queLens := make(map[string]int)
 			for containerID, queue := range s.pool.queues {
 				queLens[containerID] = len(queue)
@@ -330,6 +329,9 @@ func (s *Server) RuntimeConfig(ctx context.Context, request *runtimeapi.RuntimeC
 
 func (s *Server) CommitContainer(task types.Task) error {
 	slog.Info("Doing commit container task", "task", task)
+
+	defer s.pool.ContainerCommittingLock[task.ContainerID].Unlock()
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Minute)
 	statusReq := &runtimeapi.ContainerStatusRequest{
 		ContainerId: task.ContainerID,

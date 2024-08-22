@@ -14,9 +14,9 @@ type Pool struct {
 	pool       *ants.PoolWithFunc
 	Capability int
 
-	containerCommitting map[string]chan struct{}
-	containerStateMap   map[string]runtimeapi.ContainerState
-	containerFinMap     map[string]bool
+	ContainerCommittingLock map[string]*sync.Mutex
+	containerStateMap       map[string]runtimeapi.ContainerState
+	containerFinMap         map[string]bool
 
 	queues map[string]chan types.Task
 	mutex  sync.Mutex
@@ -25,12 +25,12 @@ type Pool struct {
 
 func NewPool(capability int, client runtimeapi.RuntimeServiceClient, f func(task types.Task) error) (*Pool, error) {
 	p := &Pool{
-		Capability:          capability,
-		queues:              make(map[string]chan types.Task),
-		containerCommitting: make(map[string]chan struct{}),
-		containerStateMap:   make(map[string]runtimeapi.ContainerState),
-		containerFinMap:     make(map[string]bool),
-		client:              client,
+		Capability:              capability,
+		queues:                  make(map[string]chan types.Task),
+		containerStateMap:       make(map[string]runtimeapi.ContainerState),
+		ContainerCommittingLock: make(map[string]*sync.Mutex),
+		containerFinMap:         make(map[string]bool),
+		client:                  client,
 	}
 
 	var err error
@@ -85,6 +85,7 @@ func (p *Pool) getQueue(containerID string) chan types.Task {
 	if _, exists := p.queues[containerID]; !exists {
 		queue := make(chan types.Task, 20)
 		p.queues[containerID] = queue
+		p.ContainerCommittingLock[containerID] = &sync.Mutex{}
 		go p.startConsumer(queue)
 	}
 	return p.queues[containerID]
@@ -98,6 +99,7 @@ func (p *Pool) startConsumer(queue chan types.Task) {
 				slog.Info("Queue closed", "ContainerID", task.ContainerID)
 				return
 			}
+			p.ContainerCommittingLock[task.ContainerID].Lock()
 			slog.Info("Start to process task", "ContainerID", task.ContainerID, "Kind", task.Kind)
 			if err := p.pool.Invoke(task); err != nil {
 				slog.Error("Error happen when container commit", "error", err)
