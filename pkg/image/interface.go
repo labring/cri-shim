@@ -3,11 +3,12 @@ package image
 import (
 	"context"
 	"fmt"
-	"github.com/containerd/containerd/leases"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/leases"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/clientutil"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
@@ -63,6 +64,7 @@ func NewImageInterface(namespace, address string, writer io.Writer) (ImageInterf
 }
 
 func (impl *imageInterfaceImpl) Stop() {
+	slog.Info("Stopping image interface")
 	impl.Client.Close()
 }
 
@@ -71,13 +73,14 @@ func (impl *imageInterfaceImpl) Stop() {
 // containerID: the ID of the container
 // pause: whether to pause the container before committing
 func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, containerID string, pause bool) error {
+	slog.Info("Committing container", "ContainerID", containerID, "ImageName", imageName)
 	opt := types.ContainerCommitOptions{
 		Stdout:   impl.Stdout,
 		GOptions: impl.GlobalOptions,
 		Pause:    pause,
 	}
 
-	tmpName := imageName + "tmp"
+	tmpName := imageName + "-tmp"
 
 	if err := container.Commit(ctx, impl.Client, tmpName, containerID, opt); err != nil {
 		return err
@@ -94,6 +97,7 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 // srcRawRef: the source image reference
 // destRawRef: the destination image reference
 func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawRef string) error {
+	slog.Info("Converting image", "Source", srcRawRef, "Destination", destRawRef)
 	opt := types.ImageConvertOptions{
 		GOptions: impl.GlobalOptions,
 		Oci:      true,
@@ -107,6 +111,7 @@ func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawR
 // force: whether to force delete
 // async: whether to delete asynchronously
 func (impl *imageInterfaceImpl) Remove(ctx context.Context, args string, force, async bool) error {
+	slog.Info("Removing image", "Image", args)
 	opt := types.ImageRemoveOptions{
 		Stdout:   impl.Stdout,
 		GOptions: impl.GlobalOptions,
@@ -119,12 +124,12 @@ func (impl *imageInterfaceImpl) Remove(ctx context.Context, args string, force, 
 // Push pushes an image to a remote repository
 // args: the list of images
 func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
+	slog.Info("Pushing image", "Image", args)
 	opt := types.ImagePushOptions{
 		GOptions: impl.GlobalOptions,
 		Stdout:   impl.Stdout,
 		Quiet:    true,
 	}
-
 	return image.Push(ctx, impl.Client, args, opt)
 }
 
@@ -133,6 +138,7 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
 // username: the username
 // password: the password
 func (impl *imageInterfaceImpl) Login(ctx context.Context, serverAddress, username, password string) error {
+	slog.Info("Logging in to registry", "ServerAddress", serverAddress, "Username", username)
 	opt := types.LoginCommandOptions{
 		GOptions: impl.GlobalOptions,
 		Username: username,
@@ -141,22 +147,20 @@ func (impl *imageInterfaceImpl) Login(ctx context.Context, serverAddress, userna
 	if serverAddress != "" {
 		opt.ServerAddress = serverAddress
 	}
-
 	return login.Login(ctx, opt, impl.Stdout)
 }
 
 func (impl *imageInterfaceImpl) Squash(ctx context.Context, SourceImageRef, TargetImageName string) error {
+	slog.Info("Squashing image", "SourceImageRef", SourceImageRef, "TargetImageName", TargetImageName)
 	opt := options.Option{
 		SourceImageRef:   SourceImageRef,
 		TargetImageName:  TargetImageName,
 		SquashLayerCount: 2,
 	}
-
 	ctx, done, err := impl.Client.WithLease(ctx, leases.WithRandomID(), leases.WithExpiration(1*time.Hour))
 	if err != nil {
 		return fmt.Errorf("failed to create lease for squash: %w", err)
 	}
 	defer done(ctx)
-
 	return impl.SquashClient.Squash(ctx, opt)
 }

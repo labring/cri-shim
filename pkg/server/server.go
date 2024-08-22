@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avast/retry-go"
+
 	"github.com/labring/cri-shim/pkg/container"
 	errutil "github.com/labring/cri-shim/pkg/errors"
 	imageutil "github.com/labring/cri-shim/pkg/image"
@@ -58,7 +60,13 @@ func New(options Options, registryOptions imageutil.RegistryOptions) (*Server, e
 	}
 	server := grpc.NewServer()
 
-	imageClient, err := imageutil.NewImageInterface(options.ContainerdNamespace, options.CRISocket, os.Stdout)
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0666)
+	if err != nil {
+		panic(err)
+	}
+	defer devNull.Close()
+
+	imageClient, err := imageutil.NewImageInterface(options.ContainerdNamespace, options.CRISocket, devNull)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +98,30 @@ func (s *Server) Start() error {
 	go func() {
 		_ = s.server.Serve(s.listener)
 	}()
+
+	go func() {
+		_ = s.PoolStatus()
+	}()
+
 	return netutil.WaitForServer(s.options.ShimSocket, time.Second)
+}
+
+func (s *Server) PoolStatus() error {
+	for {
+		select {
+		case <-time.After(20 * time.Second):
+			s.pool.mutex.Lock()
+			slog.Info("Pool status", "finished containers", s.pool.containerFinMap)
+			slog.Info("Pool status", "containers state", s.pool.containerStateMap)
+			slog.Info("Pool status", "containers committing", s.pool.containerCommitting)
+			queLens := make(map[string]int)
+			for containerID, queue := range s.pool.queues {
+				queLens[containerID] = len(queue)
+			}
+			slog.Info("Pool status", "containers commit queues length", queLens)
+			s.pool.mutex.Unlock()
+		}
+	}
 }
 
 func (s *Server) Stop() {
@@ -323,19 +354,10 @@ func (s *Server) CommitContainer(task types.Task) error {
 	imageName := registry.GetImageRef(imageRef)
 	initialImageName := imageName + "-initial"
 
-	const maxRetries = 5
-	const retryDelay = time.Second * 2
-
-	for i := 0; i < maxRetries; i++ {
-		if err = s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err == nil {
-			break
-		}
-		slog.Error("failed to commit container", "attempt", i+1, "error", err)
-		time.Sleep(retryDelay)
-	}
-
-	if err != nil {
-		slog.Error("failed to commit container after retries", "image name", initialImageName, "error", err)
+	if retry.Do(func() error {
+		return s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false)
+	}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)) != nil {
+		slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 		return err
 	}
 
@@ -357,20 +379,14 @@ func (s *Server) CommitContainer(task types.Task) error {
 			return err
 		}
 	} else {
-		slog.Info("did not push container", "image name", imageName)
+		slog.Debug("did not push container", "image name", imageName)
 	}
 
 	switch task.Kind {
 	case types.KindRemove:
-		// do remove container request
-		removeReq := &runtimeapi.RemoveContainerRequest{
-			ContainerId: task.ContainerID,
-		}
-		if _, err = s.client.RemoveContainer(ctx, removeReq); err != nil {
-			slog.Error("failed to remove container", "error", err)
-			return err
-		}
 		s.pool.ClearTasks(task.ContainerID)
+		// do remove container request, ignore error
+		_, _ = s.client.RemoveContainer(ctx, &runtimeapi.RemoveContainerRequest{ContainerId: task.ContainerID})
 	case types.KindStop:
 		// do nothing
 	case types.KindStatus:
