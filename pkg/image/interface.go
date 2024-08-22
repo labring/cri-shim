@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/containerd/containerd"
@@ -31,6 +32,7 @@ type ImageInterface interface {
 type imageInterfaceImpl struct {
 	GlobalOptions types.GlobalCommandOptions
 	Stdout        io.Writer
+	FStdout       *os.File
 	Cancel        context.CancelFunc
 
 	Client       *containerd.Client
@@ -40,7 +42,7 @@ type imageInterfaceImpl struct {
 // NewImageInterface returns a new implementation of ImageInterface
 // address: the address of the container runtime
 // writer: the io.Writer for output
-func NewImageInterface(namespace, address string, writer io.Writer) (ImageInterface, error) {
+func NewImageInterface(namespace, address string, fStdout *os.File) (ImageInterface, error) {
 	global := types.GlobalCommandOptions{
 		Namespace:        namespace,
 		Address:          address,
@@ -48,10 +50,10 @@ func NewImageInterface(namespace, address string, writer io.Writer) (ImageInterf
 	}
 	impl := &imageInterfaceImpl{
 		GlobalOptions: global,
-		Stdout:        writer,
+		Stdout:        fStdout,
+		FStdout:       fStdout,
 	}
 	var err error
-
 	if impl.Client, _, impl.Cancel, err = clientutil.NewClient(context.Background(), global.Namespace, global.Address); err != nil {
 		return nil, err
 	}
@@ -66,6 +68,7 @@ func NewImageInterface(namespace, address string, writer io.Writer) (ImageInterf
 func (impl *imageInterfaceImpl) Stop() {
 	slog.Info("Stopping image interface")
 	impl.Client.Close()
+	impl.FStdout.Close()
 }
 
 // Commit commits a container as an image

@@ -64,7 +64,6 @@ func New(options Options, registryOptions imageutil.RegistryOptions) (*Server, e
 	if err != nil {
 		panic(err)
 	}
-	defer devNull.Close()
 
 	imageClient, err := imageutil.NewImageInterface(options.ContainerdNamespace, options.CRISocket, devNull)
 	if err != nil {
