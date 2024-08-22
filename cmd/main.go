@@ -69,4 +69,5 @@ func main() {
 	_ = os.Remove(shimSocket)
 	slog.Info("shutting down the image_shim")
 	s.Stop()
+
 }

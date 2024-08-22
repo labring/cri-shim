@@ -356,9 +356,9 @@ func (s *Server) CommitContainer(task types.Task) error {
 	imageName := registry.GetImageRef(imageRef)
 	initialImageName := imageName + "-initial"
 
-	if retry.Do(func() error {
+	if err := retry.Do(func() error {
 		return s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false)
-	}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)) != nil {
+	}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)); err != nil {
 		slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 		return err
 	}

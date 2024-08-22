@@ -46,6 +46,11 @@ func NewPool(capability int, client runtimeapi.RuntimeServiceClient, f func(task
 func (p *Pool) Close() {
 	slog.Info("Close pool")
 	p.pool.Release()
+	for {
+		if p.pool.IsClosed() {
+			break
+		}
+	}
 }
 
 func (p *Pool) SubmitTask(task types.Task) {
