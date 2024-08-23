@@ -363,7 +363,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 			return err
 		}
 
-		registry, imageRef, _, pushFlag, err := s.GetInfoFromContainerStatusResp(statusResp)
+		registry, imageRef, _, pushFlag, squashFlag, err := s.GetInfoFromContainerStatusResp(statusResp)
 
 		if err != nil {
 			slog.Error("failed to get container env", "error", err)
@@ -385,10 +385,18 @@ func (s *Server) CommitContainer(task types.Task) error {
 
 		defer s.imageClient.Remove(ctx, initialImageName, false, false)
 
-		if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
-			slog.Error("failed to squash image", "image name", imageName, "error", err)
-			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
-			return err
+		if squashFlag {
+			if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
+				slog.Error("failed to squash image", "image name", imageName, "error", err)
+				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+				return err
+			}
+		} else {
+			if err = s.imageClient.Tag(ctx, initialImageName, imageName); err != nil {
+				slog.Error("failed to tag image", "image name", imageName, "error", err)
+				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+				return err
+			}
 		}
 
 		if pushFlag {
@@ -423,19 +431,20 @@ func (s *Server) CommitContainer(task types.Task) error {
 	return nil
 }
 
-func (s *Server) GetInfoFromContainerStatusResp(resp *runtimeapi.ContainerStatusResponse) (*imageutil.Registry, string, bool, bool, error) {
+func (s *Server) GetInfoFromContainerStatusResp(resp *runtimeapi.ContainerStatusResponse) (*imageutil.Registry, string, bool, bool, bool, error) {
 	info := &container.Info{}
 	if err := json.Unmarshal([]byte(resp.Info["info"]), info); err != nil {
 		slog.Error("failed to unmarshal container info", "error", err)
-		return nil, "", false, false, err
+		return nil, "", false, false, false, err
 	}
 	slog.Debug("Got container info env", "info env", info.Config.Envs)
 
-	var registryName, userName, password, imageName, repo, commitOnStop, sealosUsername string
+	var registryName, userName, password, imageName, imageSquash, repo, commitOnStop, sealosUsername string
 	envMap := map[string]*string{
 		types.ImageRegistryAddressOnEnv:    &registryName,
 		types.ImageRegistryUserNameOnEnv:   &userName,
 		types.ImageRegistryPasswordOnEnv:   &password,
+		types.ImageSquashOnEnv:             &imageSquash,
 		types.ImageNameOnEnv:               &imageName,
 		types.ImageRegistryRepositoryOnEnv: &repo,
 		types.ContainerCommitOnStopEnvFlag: &commitOnStop,
@@ -452,7 +461,7 @@ func (s *Server) GetInfoFromContainerStatusResp(resp *runtimeapi.ContainerStatus
 	if commitOnStop == types.ContainerCommitOnStopEnvEnableValue {
 		commitFlag = true
 	} else {
-		return nil, "", false, false, nil
+		return nil, "", false, false, false, nil
 	}
 
 	if imageName == "" {
@@ -476,7 +485,12 @@ func (s *Server) GetInfoFromContainerStatusResp(resp *runtimeapi.ContainerStatus
 		slog.Error("not found password", "error", errutil.ErrPasswordNotFound, "username", userName, "container id", resp.Status.Id)
 	}
 
-	return imageutil.NewRegistry(s.globalRegistryOptions, envRegistryOpt, s.options.ContainerdNamespace, sealosUsername), imageName, commitFlag, pushFlag, nil
+	squashFlag := false
+	if imageSquash == "true" {
+		squashFlag = true
+	}
+
+	return imageutil.NewRegistry(s.globalRegistryOptions, envRegistryOpt, s.options.ContainerdNamespace, sealosUsername), imageName, commitFlag, pushFlag, squashFlag, nil
 }
 
 func (s *Server) CheckCommitFlag(ctx context.Context, ContainerID string) (bool, error) {
@@ -491,7 +505,7 @@ func (s *Server) CheckCommitFlag(ctx context.Context, ContainerID string) (bool,
 		return false, err
 	}
 
-	_, _, commitFlag, _, err := s.GetInfoFromContainerStatusResp(statusResp)
+	_, _, commitFlag, _, _, err := s.GetInfoFromContainerStatusResp(statusResp)
 	if err != nil {
 		slog.Error("failed to get container env", "error", err, "container id", ContainerID)
 		return false, err

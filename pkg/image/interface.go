@@ -26,6 +26,7 @@ type ImageInterface interface {
 	Login(ctx context.Context, serverAddress, username, password string) error
 	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
 	Remove(ctx context.Context, args string, force, async bool) error
+	Tag(ctx context.Context, src, dest string) error
 	Stop()
 }
 
@@ -134,6 +135,17 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
 		Quiet:    true,
 	}
 	return image.Push(ctx, impl.Client, args, opt)
+}
+
+// Tag tags an image with the specified name
+func (impl *imageInterfaceImpl) Tag(ctx context.Context, src, dest string) error {
+	slog.Info("Tagging image", "Source", src, "Destination", dest)
+	opt := types.ImageTagOptions{
+		GOptions: impl.GlobalOptions,
+		Source:   src,
+		Target:   dest,
+	}
+	return image.Tag(ctx, impl.Client, opt)
 }
 
 // Login logs in to the image registry
