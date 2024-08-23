@@ -347,7 +347,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 
 	commitFlag := true
 	if status, exists := s.pool.CommitStatusMap[task.ContainerID]; exists {
-		commitFlag = types.StopCommit != status
+		commitFlag = types.ErrorCommit == status
 	}
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Minute)
 
