@@ -110,7 +110,7 @@ func (s *Server) PoolStatus() error {
 		select {
 		case <-time.After(20 * time.Second):
 			s.pool.mutex.Lock()
-			slog.Info("Pool status", "finished containers", s.pool.containerFinMap)
+			slog.Info("Pool status", "commit state map", s.pool.CommitStatusMap)
 			slog.Info("Pool status", "containers state", s.pool.containerStateMap)
 			queLens := make(map[string]int)
 			for containerID, queue := range s.pool.queues {
@@ -419,7 +419,6 @@ func (s *Server) CommitContainer(task types.Task) error {
 		s.pool.ClearTasks(task.ContainerID)
 		// do remove container request, ignore error
 		_, _ = s.client.RemoveContainer(ctx, &runtimeapi.RemoveContainerRequest{ContainerId: task.ContainerID})
-		s.pool.SetCommitStatus(task.ContainerID, types.RemoveCommit)
 	case types.KindStop:
 		s.pool.SetCommitStatus(task.ContainerID, types.StopCommit)
 		// do nothing
