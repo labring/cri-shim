@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,7 +16,7 @@ import (
 
 var criSocket, shimSocket, globalRegistryAddr, globalRegistryUser, globalRegistryPassword, globalRegistryRepo, containerdNamespace string
 var poolSize int
-var debug bool
+var debug, trace bool
 
 func main() {
 	flag.StringVar(&criSocket, "cri-socket", "unix:///var/run/containerd/containerd.sock", "CRI socket path")
@@ -27,6 +29,7 @@ func main() {
 	flag.IntVar(&poolSize, "pool-size", 100, "Pool size")
 
 	flag.BoolVar(&debug, "debug", false, "enable debug logging")
+	flag.BoolVar(&trace, "trace", false, "enable pprof to trace")
 	flag.Parse()
 
 	s, err := server.New(
@@ -56,6 +59,16 @@ func main() {
 		return
 	}
 	slog.Info("server started")
+
+	if trace {
+		go func() {
+			err = http.ListenAndServe(":8090", nil)
+			if err != nil {
+				slog.Error("pprof server started error", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
