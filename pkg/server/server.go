@@ -437,6 +437,8 @@ func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (regi
 	registry = &imageutil.Registry{}
 	info = &container.Info{}
 
+	ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
+
 	c, err := s.containerdClient.LoadContainer(ctx, containerID)
 	if err != nil {
 		return registry, info, err
