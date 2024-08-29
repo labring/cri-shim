@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net"
 	"os"
@@ -12,11 +11,11 @@ import (
 	"github.com/avast/retry-go"
 
 	"github.com/labring/cri-shim/pkg/container"
-	errutil "github.com/labring/cri-shim/pkg/errors"
 	imageutil "github.com/labring/cri-shim/pkg/image"
 	netutil "github.com/labring/cri-shim/pkg/net"
 	"github.com/labring/cri-shim/pkg/types"
 
+	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/namespaces"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -44,11 +43,12 @@ type Server struct {
 	options               Options
 	globalRegistryOptions imageutil.RegistryOptions
 
-	client      runtimeapi.RuntimeServiceClient
-	server      *grpc.Server
-	listener    net.Listener
-	bufListener *bufconn.Listener
-	imageClient imageutil.ImageInterface
+	containerdClient *containerd.Client
+	client           runtimeapi.RuntimeServiceClient
+	server           *grpc.Server
+	listener         net.Listener
+	bufListener      *bufconn.Listener
+	imageClient      imageutil.ImageInterface
 
 	pool *Pool
 }
@@ -93,6 +93,11 @@ func (s *Server) Start() error {
 	s.client = runtimeapi.NewRuntimeServiceClient(conn)
 	runtimeapi.RegisterRuntimeServiceServer(s.server, s)
 
+	s.containerdClient, err = containerd.NewWithConn(conn, containerd.WithDefaultNamespace(s.options.ContainerdNamespace))
+	if err != nil {
+		return err
+	}
+
 	// do serve after client is created and registered
 	go func() {
 		_ = s.server.Serve(s.listener)
@@ -110,7 +115,7 @@ func (s *Server) PoolStatus() error {
 		select {
 		case <-time.After(20 * time.Second):
 			s.pool.mutex.Lock()
-			slog.Info("Pool status", "commit state map", s.pool.CommitStatusMap)
+			slog.Info("Pool status", "finished containers", s.pool.CommitStatusMap)
 			slog.Info("Pool status", "containers state", s.pool.containerStateMap)
 			queLens := make(map[string]int)
 			for containerID, queue := range s.pool.queues {
@@ -178,11 +183,11 @@ func (s *Server) StartContainer(ctx context.Context, request *runtimeapi.StartCo
 func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopContainerRequest) (*runtimeapi.StopContainerResponse, error) {
 	// todo check container env and create commit
 	slog.Info("Doing stop container request", "request", request)
-	commitFlag, err := s.CheckCommitFlag(ctx, request.ContainerId)
+	_, info, err := s.GetContainerInfo(ctx, request.ContainerId)
 	if err != nil {
 		return nil, err
 	}
-	if commitFlag {
+	if info.CommitEnabled {
 		slog.Info("commit flag found when doing stop container request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
 			Kind:        types.KindStop,
@@ -208,11 +213,11 @@ func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.Remove
 		return s.client.RemoveContainer(ctx, request)
 	}
 
-	commitFlag, err := s.CheckCommitFlag(ctx, request.ContainerId)
+	_, info, err := s.GetContainerInfo(ctx, request.ContainerId)
 	if err != nil {
 		return nil, err
 	}
-	if commitFlag {
+	if info.CommitEnabled {
 		slog.Info("commit flag found when doing remove container request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
 			Kind:        types.KindRemove,
@@ -230,13 +235,13 @@ func (s *Server) ListContainers(ctx context.Context, request *runtimeapi.ListCon
 
 func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.ContainerStatusRequest) (*runtimeapi.ContainerStatusResponse, error) {
 	slog.Debug("Doing container status request", "request", request)
-	commitFlag, err := s.CheckCommitFlag(ctx, request.ContainerId)
+	_, info, err := s.GetContainerInfo(ctx, request.ContainerId)
 	if err != nil {
 		slog.Error("failed to get container env", "error", err)
 		return nil, err
 	}
 	resp, err := s.client.ContainerStatus(ctx, request)
-	if commitFlag {
+	if info.CommitEnabled {
 		slog.Info("commit flag found when doing container status request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
 			Kind:           types.KindStatus,
@@ -347,7 +352,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 
 	commitFlag := true
 	if status, exists := s.pool.CommitStatusMap[task.ContainerID]; exists {
-		commitFlag = types.ErrorCommit == status
+		commitFlag = types.StopCommit != status
 	}
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Minute)
 
@@ -363,7 +368,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 			return err
 		}
 
-		registry, imageRef, _, pushFlag, squashFlag, err := s.GetInfoFromContainerStatusResp(statusResp)
+		registry, info, err := s.GetContainerInfo(ctx, task.ContainerID)
 
 		if err != nil {
 			slog.Error("failed to get container env", "error", err)
@@ -372,7 +377,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 		//commit image
 
 		ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
-		imageName := registry.GetImageRef(imageRef)
+		imageName := registry.GetImageRef(info.CommitImage)
 		initialImageName := imageName + "-initial"
 
 		if err := retry.Do(func() error {
@@ -385,7 +390,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 
 		defer s.imageClient.Remove(ctx, initialImageName, false, false)
 
-		if squashFlag {
+		if info.SquashEnabled {
 			if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
 				slog.Error("failed to squash image", "image name", imageName, "error", err)
 				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
@@ -399,7 +404,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 			}
 		}
 
-		if pushFlag {
+		if info.PushEnabled {
 			if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to login register", "error", err)
 				return err
@@ -421,93 +426,52 @@ func (s *Server) CommitContainer(task types.Task) error {
 		_, _ = s.client.RemoveContainer(ctx, &runtimeapi.RemoveContainerRequest{ContainerId: task.ContainerID})
 	case types.KindStop:
 		s.pool.SetCommitStatus(task.ContainerID, types.StopCommit)
-		// do nothing
 	case types.KindStatus:
 		s.pool.SetCommitStatus(task.ContainerID, types.StatusCommit)
-		// do nothing
 	}
 
 	return nil
 }
 
-func (s *Server) GetInfoFromContainerStatusResp(resp *runtimeapi.ContainerStatusResponse) (*imageutil.Registry, string, bool, bool, bool, error) {
-	info := &container.Info{}
-	if err := json.Unmarshal([]byte(resp.Info["info"]), info); err != nil {
-		slog.Error("failed to unmarshal container info", "error", err)
-		return nil, "", false, false, false, err
-	}
-	slog.Debug("Got container info env", "info env", info.Config.Envs)
+func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (registry *imageutil.Registry, info *container.Info, err error) {
+	registry = &imageutil.Registry{}
+	info = &container.Info{}
 
-	var registryName, userName, password, imageName, imageSquash, repo, commitOnStop, sealosUsername string
-	envMap := map[string]*string{
-		types.ImageRegistryAddressOnEnv:    &registryName,
-		types.ImageRegistryUserNameOnEnv:   &userName,
-		types.ImageRegistryPasswordOnEnv:   &password,
-		types.ImageSquashOnEnv:             &imageSquash,
-		types.ImageNameOnEnv:               &imageName,
-		types.ImageRegistryRepositoryOnEnv: &repo,
-		types.ContainerCommitOnStopEnvFlag: &commitOnStop,
-		types.SealosUsernameOnEnv:          &sealosUsername,
+	ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
+
+	c, err := s.containerdClient.LoadContainer(ctx, containerID)
+	if err != nil {
+		return registry, info, err
 	}
-	for _, env := range info.Config.Envs {
-		if target, exists := envMap[env.Key]; exists {
-			*target = env.Value
+	spec, err := c.Spec(ctx)
+	if err != nil {
+		return registry, info, err
+	}
+	slog.Debug("Got container info env", "info env", spec.Process.Env)
+	for _, env := range spec.Process.Env {
+		kv := strings.SplitN(env, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		switch kv[0] {
+		case types.ImageRegistryAddressOnEnv:
+			registry.RegistryAddr = kv[1]
+		case types.ImageRegistryUserNameOnEnv:
+			registry.UserName = kv[1]
+		case types.ImageRegistryPasswordOnEnv:
+			registry.Password = kv[1]
+		case types.ImageRegistryRepositoryOnEnv:
+			registry.Repository = kv[1]
+		case types.SealosUsernameOnEnv:
+			registry.SealosUsername = kv[1]
+		case types.ImageSquashOnEnv:
+			info.SquashEnabled = kv[1] == types.ImageSquashOnEnvEnableValue
+		case types.ImageNameOnEnv:
+			info.CommitImage = kv[1]
+		case types.ContainerCommitOnStopEnvFlag:
+			info.CommitEnabled = kv[1] == types.ContainerCommitOnStopEnvEnableValue
 		}
 	}
-	slog.Debug("Got container env", "registry", registryName, "user", userName, "password", password, "image", imageName, "repo", repo, "commitOnStop", commitOnStop)
+	return registry, info, nil
 
-	commitFlag := false
-	if commitOnStop == types.ContainerCommitOnStopEnvEnableValue {
-		commitFlag = true
-	} else {
-		return nil, "", false, false, false, nil
-	}
-
-	if imageName == "" {
-		imageName = resp.Status.Image.Image
-		parts := strings.Split(imageName, "/")
-		// todo add more check for image name
-		if len(parts) > 1 {
-			imageName = strings.Join(parts[len(parts)-1:], "/")
-		}
-	}
-	envRegistryOpt := imageutil.RegistryOptions{
-		RegistryAddr: registryName,
-		UserName:     userName,
-		Password:     password,
-		Repository:   repo,
-	}
-
-	pushFlag := true
-	if userName != "" && password == "" {
-		pushFlag = false
-		slog.Error("not found password", "error", errutil.ErrPasswordNotFound, "username", userName, "container id", resp.Status.Id)
-	}
-
-	squashFlag := false
-	if imageSquash == "true" {
-		squashFlag = true
-	}
-
-	return imageutil.NewRegistry(s.globalRegistryOptions, envRegistryOpt, s.options.ContainerdNamespace, sealosUsername), imageName, commitFlag, pushFlag, squashFlag, nil
-}
-
-func (s *Server) CheckCommitFlag(ctx context.Context, ContainerID string) (bool, error) {
-	statusReq := &runtimeapi.ContainerStatusRequest{
-		ContainerId: ContainerID,
-		Verbose:     true,
-	}
-
-	statusResp, err := s.client.ContainerStatus(ctx, statusReq)
-	if err != nil {
-		slog.Error("failed to get container status", "error", err, "container id", ContainerID)
-		return false, err
-	}
-
-	_, _, commitFlag, _, _, err := s.GetInfoFromContainerStatusResp(statusResp)
-	if err != nil {
-		slog.Error("failed to get container env", "error", err, "container id", ContainerID)
-		return false, err
-	}
-	return commitFlag, nil
 }
