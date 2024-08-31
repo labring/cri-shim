@@ -3,6 +3,8 @@ package image
 import (
 	"context"
 	"fmt"
+	"github.com/containerd/containerd/remotes"
+	"github.com/containerd/containerd/remotes/docker/config"
 	"io"
 	"log/slog"
 	"os"
@@ -129,22 +131,20 @@ func (impl *imageInterfaceImpl) Remove(ctx context.Context, args string, force, 
 // Push pushes an image to a remote repository
 // args: the list of images
 func (impl *imageInterfaceImpl) Push(ctx context.Context, args, username, password string) error {
-	// 设置远程仓库认证信息
-	resolver := docker.NewResolver(docker.ResolverOptions{
-		Credentials: func(string) (string, string, error) {
-			return username, password, nil
-		},
-		PlainHTTP: true,
-	})
+	//set resolver
+	resolver, err := GetResolver(ctx, username, password)
+	if err != nil {
+		slog.Error("failed to set resolver", "Image", args, "Error", err)
+		return err
+	}
 
-	// 获取镜像
 	imageRef, err := impl.Client.GetImage(ctx, args)
 	if err != nil {
 		slog.Error("Get image error", "Image", args, "Error", err)
 		return err
 	}
 
-	// 推送镜像
+	// push image
 	err = impl.Client.Push(ctx, args, imageRef.Target(),
 		containerd.WithResolver(resolver),
 	)
@@ -154,6 +154,22 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args, username, passwo
 	}
 	slog.Info("Pushed image success", "Image", args)
 	return nil
+}
+
+func GetResolver(ctx context.Context, username string, secret string) (remotes.Resolver, error) {
+	resolverOptions := docker.ResolverOptions{
+		Tracker: docker.NewInMemoryTracker(),
+	}
+	hostOptions := config.HostOptions{}
+	hostOptions.Credentials = func(host string) (string, string, error) {
+		return username, secret, nil
+	}
+	hostOptions.DefaultScheme = "http"
+
+	hostOptions.DefaultTLS = nil
+	resolverOptions.Hosts = config.ConfigureHosts(ctx, hostOptions)
+
+	return docker.NewResolver(resolverOptions), nil
 }
 
 // Tag tags an image with the specified name
