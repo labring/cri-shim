@@ -134,12 +134,14 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args, username, passwo
 		Credentials: func(string) (string, string, error) {
 			return username, password, nil
 		},
+		PlainHTTP: true,
 	})
 
 	// 获取镜像
 	imageRef, err := impl.Client.GetImage(ctx, args)
 	if err != nil {
 		slog.Error("Get image error", "Image", args, "Error", err)
+		return err
 	}
 
 	// 推送镜像
@@ -148,6 +150,7 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args, username, passwo
 	)
 	if err != nil {
 		slog.Error("Push image error ", "Image", args, "Error", err)
+		return err
 	}
 	slog.Info("Pushed image success", "Image", args)
 	return nil
