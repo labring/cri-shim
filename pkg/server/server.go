@@ -466,6 +466,11 @@ func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (regi
 		case types.ContainerCommitOnStopEnvFlag:
 			info.CommitEnabled = kv[1] == types.ContainerCommitOnStopEnvEnableValue
 		}
+
+		info.PushEnabled = true
+		if registry.UserName != "" && registry.Password == "" {
+			info.PushEnabled = false
+		}
 	}
 	return registry, info, nil
 
