@@ -405,12 +405,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 		}
 
 		if info.PushEnabled {
-			if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
-				slog.Error("failed to login register", "error", err)
-				return err
-			}
-
-			if err = s.imageClient.Push(ctx, imageName); err != nil {
+			if err = s.imageClient.Push(ctx, imageName, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to push container", "error", err, "image name", imageName)
 				return err
 			}

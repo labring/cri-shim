@@ -10,6 +10,7 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/leases"
+	"github.com/containerd/containerd/remotes/docker"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/clientutil"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
@@ -21,7 +22,7 @@ import (
 
 // ImageInterface defines the interface for image operations
 type ImageInterface interface {
-	Push(ctx context.Context, args string) error
+	Push(ctx context.Context, args, username, password string) error
 	Commit(ctx context.Context, imageName, containerID string, pause bool) error
 	Login(ctx context.Context, serverAddress, username, password string) error
 	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
@@ -127,14 +128,29 @@ func (impl *imageInterfaceImpl) Remove(ctx context.Context, args string, force, 
 
 // Push pushes an image to a remote repository
 // args: the list of images
-func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
-	slog.Info("Pushing image", "Image", args)
-	opt := types.ImagePushOptions{
-		GOptions: impl.GlobalOptions,
-		Stdout:   impl.Stdout,
-		Quiet:    true,
+func (impl *imageInterfaceImpl) Push(ctx context.Context, args, username, password string) error {
+	// 设置远程仓库认证信息
+	resolver := docker.NewResolver(docker.ResolverOptions{
+		Credentials: func(string) (string, string, error) {
+			return username, password, nil
+		},
+	})
+
+	// 获取镜像
+	imageRef, err := impl.Client.GetImage(ctx, args)
+	if err != nil {
+		slog.Error("Get image error", "Image", args, "Error", err)
 	}
-	return image.Push(ctx, impl.Client, args, opt)
+
+	// 推送镜像
+	err = impl.Client.Push(ctx, args, imageRef.Target(),
+		containerd.WithResolver(resolver),
+	)
+	if err != nil {
+		slog.Error("Push image error ", "Image", args, "Error", err)
+	}
+	slog.Info("Pushed image success", "Image", args)
+	return nil
 }
 
 // Tag tags an image with the specified name
