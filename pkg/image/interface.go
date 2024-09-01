@@ -3,6 +3,8 @@ package image
 import (
 	"context"
 	"fmt"
+	"github.com/containerd/containerd/remotes"
+	"github.com/containerd/containerd/remotes/docker/config"
 	"io"
 	"log/slog"
 	"os"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/leases"
+	"github.com/containerd/containerd/remotes/docker"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/clientutil"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
@@ -21,7 +24,7 @@ import (
 
 // ImageInterface defines the interface for image operations
 type ImageInterface interface {
-	Push(ctx context.Context, args string) error
+	Push(ctx context.Context, args, username, password string) error
 	Commit(ctx context.Context, imageName, containerID string, pause bool) error
 	Login(ctx context.Context, serverAddress, username, password string) error
 	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
@@ -127,14 +130,46 @@ func (impl *imageInterfaceImpl) Remove(ctx context.Context, args string, force, 
 
 // Push pushes an image to a remote repository
 // args: the list of images
-func (impl *imageInterfaceImpl) Push(ctx context.Context, args string) error {
-	slog.Info("Pushing image", "Image", args)
-	opt := types.ImagePushOptions{
-		GOptions: impl.GlobalOptions,
-		Stdout:   impl.Stdout,
-		Quiet:    true,
+func (impl *imageInterfaceImpl) Push(ctx context.Context, args, username, password string) error {
+	//set resolver
+	resolver, err := GetResolver(ctx, username, password)
+	if err != nil {
+		slog.Error("failed to set resolver", "Image", args, "Error", err)
+		return err
 	}
-	return image.Push(ctx, impl.Client, args, opt)
+
+	imageRef, err := impl.Client.GetImage(ctx, args)
+	if err != nil {
+		slog.Error("Get image error", "Image", args, "Error", err)
+		return err
+	}
+
+	// push image
+	err = impl.Client.Push(ctx, args, imageRef.Target(),
+		containerd.WithResolver(resolver),
+	)
+	if err != nil {
+		slog.Error("Push image error ", "Image", args, "Error", err)
+		return err
+	}
+	slog.Info("Pushed image success", "Image", args)
+	return nil
+}
+
+func GetResolver(ctx context.Context, username string, secret string) (remotes.Resolver, error) {
+	resolverOptions := docker.ResolverOptions{
+		Tracker: docker.NewInMemoryTracker(),
+	}
+	hostOptions := config.HostOptions{}
+	hostOptions.Credentials = func(host string) (string, string, error) {
+		return username, secret, nil
+	}
+	hostOptions.DefaultScheme = "http"
+
+	hostOptions.DefaultTLS = nil
+	resolverOptions.Hosts = config.ConfigureHosts(ctx, hostOptions)
+
+	return docker.NewResolver(resolverOptions), nil
 }
 
 // Tag tags an image with the specified name

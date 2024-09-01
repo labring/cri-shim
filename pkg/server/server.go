@@ -405,12 +405,13 @@ func (s *Server) CommitContainer(task types.Task) error {
 		}
 
 		if info.PushEnabled {
-			if err = s.imageClient.Login(ctx, registry.LoginAddress, registry.UserName, registry.Password); err != nil {
-				slog.Error("failed to login register", "error", err)
-				return err
+			if registry.UserName == "" {
+				registry.UserName = s.globalRegistryOptions.UserName
 			}
-
-			if err = s.imageClient.Push(ctx, imageName); err != nil {
+			if registry.Password == "" {
+				registry.Password = s.globalRegistryOptions.Password
+			}
+			if err = s.imageClient.Push(ctx, imageName, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to push container", "error", err, "image name", imageName)
 				return err
 			}
@@ -470,6 +471,11 @@ func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (regi
 			info.CommitImage = kv[1]
 		case types.ContainerCommitOnStopEnvFlag:
 			info.CommitEnabled = kv[1] == types.ContainerCommitOnStopEnvEnableValue
+		}
+
+		info.PushEnabled = true
+		if registry.UserName != "" && registry.Password == "" {
+			info.PushEnabled = false
 		}
 	}
 	return registry, info, nil
