@@ -238,7 +238,7 @@ func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.Contai
 	_, info, err := s.GetContainerInfo(ctx, request.ContainerId)
 	if err != nil {
 		slog.Error("failed to get container env", "error", err)
-		return nil, err
+		return s.client.ContainerStatus(ctx, request)
 	}
 	resp, err := s.client.ContainerStatus(ctx, request)
 	if info.CommitEnabled {
