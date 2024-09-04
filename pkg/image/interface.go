@@ -3,8 +3,7 @@ package image
 import (
 	"context"
 	"fmt"
-	"github.com/containerd/containerd/remotes"
-	"github.com/containerd/containerd/remotes/docker/config"
+
 	"io"
 	"log/slog"
 	"os"
@@ -12,7 +11,9 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/leases"
+	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
+	"github.com/containerd/containerd/remotes/docker/config"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/clientutil"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
