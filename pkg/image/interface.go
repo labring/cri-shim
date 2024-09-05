@@ -3,8 +3,7 @@ package image
 import (
 	"context"
 	"fmt"
-	"github.com/containerd/containerd/remotes"
-	"github.com/containerd/containerd/remotes/docker/config"
+
 	"io"
 	"log/slog"
 	"os"
@@ -12,7 +11,9 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/leases"
+	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
+	"github.com/containerd/containerd/remotes/docker/config"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/clientutil"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
@@ -86,18 +87,7 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 		GOptions: impl.GlobalOptions,
 		Pause:    pause,
 	}
-
-	tmpName := imageName + "-tmp"
-
-	if err := container.Commit(ctx, impl.Client, tmpName, containerID, opt); err != nil {
-		return err
-	}
-
-	if err := impl.convert(ctx, tmpName, imageName); err != nil {
-		return err
-	}
-
-	return impl.Remove(ctx, tmpName, false, false)
+	return container.Commit(ctx, impl.Client, imageName, containerID, opt)
 }
 
 // convert converts an image to the specified format

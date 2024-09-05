@@ -1,10 +1,8 @@
 package types
 
 import (
-	"os"
-
+	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
 const (
@@ -14,19 +12,30 @@ const (
 )
 
 type Config struct {
-	CRIShimSocket string          `json:"shimSocket"`
-	RuntimeSocket string          `json:"criSocket"`
-	Timeout       metav1.Duration `json:"timeout"`
+	CRIShimSocket          string
+	RuntimeSocket          string
+	Timeout                metav1.Duration
+	GlobalRegistryAddr     string
+	GlobalRegistryUser     string
+	GlobalRegistryPassword string
+	GlobalRegistryRepo     string
+	ContainerdNamespace    string
+	PoolSize               int
+	Debug                  bool
+	Trace                  bool
 }
 
-func Unmarshal(path string) (*Config, error) {
-	metadata, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+func BindOptions(cmd *cobra.Command) *Config {
 	cfg := &Config{}
-	if err = yaml.Unmarshal(metadata, cfg); err != nil {
-		return nil, err
-	}
-	return cfg, err
+	cmd.Flags().StringVar(&cfg.RuntimeSocket, "cri-socket", "unix:///var/run/containerd/containerd.sock", "CRI socket path")
+	cmd.Flags().StringVar(&cfg.CRIShimSocket, "shim-socket", "/var/run/sealos/cri-shim.sock", "CRI shim socket path")
+	cmd.Flags().StringVar(&cfg.GlobalRegistryAddr, "global-registry-addr", "docker.io", "Global registry address")
+	cmd.Flags().StringVar(&cfg.GlobalRegistryUser, "global-registry-user", "", "Global registry username")
+	cmd.Flags().StringVar(&cfg.GlobalRegistryPassword, "global-registry-password", "", "Global registry password")
+	cmd.Flags().StringVar(&cfg.GlobalRegistryRepo, "global-registry-repository", "", "Global registry repository")
+	cmd.Flags().StringVar(&cfg.ContainerdNamespace, "containerd-namespace", "k8s.io", "Containerd namespace")
+	cmd.Flags().IntVar(&cfg.PoolSize, "pool-size", 100, "Pool size")
+	cmd.Flags().BoolVar(&cfg.Debug, "debug", false, "enable debug logging")
+	cmd.Flags().BoolVar(&cfg.Trace, "trace", false, "enable pprof to trace")
+	return cfg
 }
