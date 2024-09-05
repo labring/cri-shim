@@ -8,6 +8,7 @@ require (
 	github.com/containerd/nerdctl/v2 v2.0.0-rc.0
 	github.com/labring/layer-squash v0.2.0
 	github.com/panjf2000/ants/v2 v2.10.0
+	github.com/spf13/cobra v1.8.1
 	google.golang.org/grpc v1.65.0
 	k8s.io/apimachinery v0.30.3
 	k8s.io/cri-api v0.30.3
@@ -71,6 +72,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/ipfs/go-cid v0.4.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
@@ -110,6 +112,7 @@ require (
 	github.com/rootless-containers/rootlesskit/v2 v2.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stefanberger/go-pkcs11uri v0.0.0-20230803200340-78284954bff6 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tidwall/gjson v1.17.1 // indirect
