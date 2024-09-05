@@ -87,18 +87,7 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 		GOptions: impl.GlobalOptions,
 		Pause:    pause,
 	}
-
-	tmpName := imageName + "-tmp"
-
-	if err := container.Commit(ctx, impl.Client, tmpName, containerID, opt); err != nil {
-		return err
-	}
-
-	if err := impl.convert(ctx, tmpName, imageName); err != nil {
-		return err
-	}
-
-	return impl.Remove(ctx, tmpName, false, false)
+	return container.Commit(ctx, impl.Client, imageName, containerID, opt)
 }
 
 // convert converts an image to the specified format
