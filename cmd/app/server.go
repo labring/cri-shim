@@ -57,6 +57,8 @@ func run(cfg *types.Config) {
 	}
 	slog.Info("server started")
 
+	s.Init()
+
 	if cfg.Trace {
 		go func() {
 			err = http.ListenAndServe(":8090", nil)

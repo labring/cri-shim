@@ -345,6 +345,24 @@ func (s *Server) RuntimeConfig(ctx context.Context, request *runtimeapi.RuntimeC
 	return s.client.RuntimeConfig(ctx, request)
 }
 
+func (s *Server) Init() {
+	ctx := context.Background()
+	request := &runtimeapi.ListContainerStatsRequest{}
+	list, err := s.client.ListContainerStats(ctx, request)
+	if err != nil {
+		slog.Error("failed to list container stats", "error", err)
+	}
+	for _, i := range list.Stats {
+		_, info, err := s.GetContainerInfo(ctx, i.Attributes.Id)
+		if err != nil {
+			slog.Error("failed to get container env", "error", err)
+		}
+		if info.CommitEnabled {
+			s.pool.containerStateMap[i.Attributes.Id] = runtimeapi.ContainerState_CONTAINER_RUNNING
+		}
+	}
+}
+
 func (s *Server) CommitContainer(task types.Task) error {
 	slog.Info("Doing commit container task", "task", task)
 
