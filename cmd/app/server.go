@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -10,8 +11,10 @@ import (
 
 	imageutil "github.com/labring/cri-shim/pkg/image"
 	"github.com/labring/cri-shim/pkg/server"
+	"github.com/labring/cri-shim/pkg/trace"
 	"github.com/labring/cri-shim/pkg/types"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
 )
 
 var cfg *types.Config
@@ -36,6 +39,7 @@ func run(cfg *types.Config) {
 			CRISocket:           cfg.RuntimeSocket,
 			ContainerdNamespace: cfg.ContainerdNamespace,
 			PoolSize:            cfg.PoolSize,
+			MetricFlag:          cfg.MetricsConfig.Metric,
 		},
 		imageutil.RegistryOptions{
 			RegistryAddr: cfg.GlobalRegistryAddr,
@@ -58,6 +62,16 @@ func run(cfg *types.Config) {
 	slog.Info("server started")
 
 	s.Init()
+
+	if cfg.MetricsConfig.Metric {
+		shutdown, err := trace.SetupOTelSDK(cfg.MetricsConfig)
+		if err != nil {
+			slog.Error("failed to setup otel sdk", err)
+		}
+		defer shutdown(context.Background())
+		s.MetricClient = otel.Meter(trace.MeterName)
+		slog.Info("otel sdk started")
+	}
 
 	if cfg.Trace {
 		go func() {
