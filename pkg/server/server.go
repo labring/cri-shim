@@ -123,6 +123,15 @@ func (s *Server) PoolStatus() error {
 			for containerID, queue := range s.pool.queues {
 				queLens[containerID] = len(queue)
 			}
+
+			if s.options.MetricFlag {
+				if gauge, err := s.MetricClient.Int64Gauge("cri_shim_pool_goroutine_num", metric.WithDescription("The number of running pool")); err != nil {
+					slog.Debug("failed to get gauge of cri_shim_pool_goroutine_num", "error", err)
+				} else {
+					gauge.Record(context.Background(), int64(s.pool.pool.Running()))
+				}
+			}
+
 			slog.Info("Pool status", "containers commit queues length", queLens)
 			s.pool.mutex.Unlock()
 		}
@@ -439,6 +448,9 @@ func (s *Server) CommitContainer(task types.Task) error {
 		} else {
 			slog.Debug("did not push container", "image name", imageName)
 		}
+		if s.options.MetricFlag {
+			s.MetricCommit(start, ctx)
+		}
 	}
 
 	switch task.Kind {
@@ -450,10 +462,6 @@ func (s *Server) CommitContainer(task types.Task) error {
 		s.pool.SetCommitStatus(task.ContainerID, types.StopCommit)
 	case types.KindStatus:
 		s.pool.SetCommitStatus(task.ContainerID, types.StatusCommit)
-	}
-
-	if s.options.MetricFlag {
-		s.MetricCommit(start, ctx)
 	}
 
 	return nil
@@ -513,16 +521,10 @@ func (s *Server) MetricCommit(start time.Time, ctx context.Context) {
 		counter.Add(ctx, 1)
 	}
 
-	if gauge, err := s.MetricClient.Int64Gauge("cri_shim_pool_goroutine_num", metric.WithDescription("The number of running pool")); err != nil {
-		slog.Debug("failed to get gauge of cri_shim_pool_goroutine_num", "error", err)
-	} else {
-		gauge.Record(ctx, int64(s.pool.pool.Running()))
-	}
-
 	if histogram, err := s.MetricClient.Float64Histogram(
 		"cri_shim_commit_duration",
 		metric.WithDescription("a histogram for commit time"),
-		metric.WithExplicitBucketBoundaries(1, 10, 20, 40, 100, 150, 200, 300),
+		metric.WithExplicitBucketBoundaries(0, 20, 40, 60, 80, 100, 120),
 	); err != nil {
 		slog.Debug("failed to get histogram of cri_shim_commit_duration", "error", err)
 	} else {
