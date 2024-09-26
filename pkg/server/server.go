@@ -524,7 +524,7 @@ func (s *Server) MetricCommit(start time.Time, ctx context.Context) {
 	if histogram, err := s.MetricClient.Float64Histogram(
 		"cri_shim_commit_duration",
 		metric.WithDescription("a histogram for commit time"),
-		metric.WithExplicitBucketBoundaries(0, 20, 40, 60, 80, 100, 120),
+		metric.WithExplicitBucketBoundaries(0, 20, 40, 60, 80, 100, 120, 150, 200, 300),
 	); err != nil {
 		slog.Debug("failed to get histogram of cri_shim_commit_duration", "error", err)
 	} else {

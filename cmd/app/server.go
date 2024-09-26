@@ -10,8 +10,8 @@ import (
 	"time"
 
 	imageutil "github.com/labring/cri-shim/pkg/image"
+	"github.com/labring/cri-shim/pkg/metric"
 	"github.com/labring/cri-shim/pkg/server"
-	"github.com/labring/cri-shim/pkg/trace"
 	"github.com/labring/cri-shim/pkg/types"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
@@ -64,12 +64,12 @@ func run(cfg *types.Config) {
 	s.Init()
 
 	if cfg.MetricsConfig.Metric {
-		shutdown, err := trace.SetupOTelSDK(cfg.MetricsConfig)
+		shutdown, err := metrics.SetupOTelSDK(cfg.MetricsConfig)
 		if err != nil {
 			slog.Error("failed to setup otel sdk", err)
 		}
 		defer shutdown(context.Background())
-		s.MetricClient = otel.Meter(trace.MeterName)
+		s.MetricClient = otel.Meter(metrics.MeterName)
 		slog.Info("otel sdk started")
 	}
 
