@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -125,10 +126,21 @@ func (s *Server) PoolStatus() error {
 			}
 
 			if s.options.MetricFlag {
+				ctx := context.Background()
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				allocGauge, _ := s.MetricClient.Float64Gauge("cri_shim_memory_alloc")
+				totalGauge, _ := s.MetricClient.Float64Gauge("cri_shim_memory_total")
+				heapGauge, _ := s.MetricClient.Float64Gauge("cri_shim_memory_heap")
+
+				allocGauge.Record(ctx, float64(m.Alloc))
+				totalGauge.Record(ctx, float64(m.TotalAlloc))
+				heapGauge.Record(ctx, float64(m.HeapAlloc))
+
 				if gauge, err := s.MetricClient.Int64Gauge("cri_shim_pool_goroutine_num", metric.WithDescription("The number of running pool")); err != nil {
 					slog.Debug("failed to get gauge of cri_shim_pool_goroutine_num", "error", err)
 				} else {
-					gauge.Record(context.Background(), int64(s.pool.pool.Running()))
+					gauge.Record(ctx, int64(s.pool.pool.Running()))
 				}
 			}
 
@@ -415,6 +427,14 @@ func (s *Server) CommitContainer(task types.Task) error {
 		}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)); err != nil {
 			slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+
+			if s.options.MetricFlag {
+				if counter, err := s.MetricClient.Int64Counter("cri_shim_error_commit_counter", metric.WithDescription("The number of error commit")); err != nil {
+					slog.Debug("failed to get counter of cri_shim_error_commit_counter", "error", err)
+				} else {
+					counter.Add(ctx, 1)
+				}
+			}
 			return err
 		}
 
