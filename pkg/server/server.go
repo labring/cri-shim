@@ -5,18 +5,17 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
-	"github.com/avast/retry-go"
-
+	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/namespaces"
 	"github.com/labring/cri-shim/pkg/container"
 	imageutil "github.com/labring/cri-shim/pkg/image"
 	netutil "github.com/labring/cri-shim/pkg/net"
 	"github.com/labring/cri-shim/pkg/types"
-
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/namespaces"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -37,6 +36,8 @@ type Options struct {
 	Mode os.FileMode
 	// PoolSize is the size of the pool of goroutines.
 	PoolSize int
+
+	MetricFlag bool
 }
 
 type Server struct {
@@ -49,6 +50,7 @@ type Server struct {
 	listener         net.Listener
 	bufListener      *bufconn.Listener
 	imageClient      imageutil.ImageInterface
+	MetricClient     metric.Meter
 
 	pool *Pool
 }
@@ -121,6 +123,26 @@ func (s *Server) PoolStatus() error {
 			for containerID, queue := range s.pool.queues {
 				queLens[containerID] = len(queue)
 			}
+
+			if s.options.MetricFlag {
+				ctx := context.Background()
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				allocGauge, _ := s.MetricClient.Float64Gauge("cri_shim_memory_alloc")
+				totalGauge, _ := s.MetricClient.Float64Gauge("cri_shim_memory_total")
+				heapGauge, _ := s.MetricClient.Float64Gauge("cri_shim_memory_heap")
+
+				allocGauge.Record(ctx, float64(m.Alloc))
+				totalGauge.Record(ctx, float64(m.TotalAlloc))
+				heapGauge.Record(ctx, float64(m.HeapAlloc))
+
+				if gauge, err := s.MetricClient.Int64Gauge("cri_shim_pool_goroutine_num", metric.WithDescription("The number of running pool")); err != nil {
+					slog.Debug("failed to get gauge of cri_shim_pool_goroutine_num", "error", err)
+				} else {
+					gauge.Record(ctx, int64(s.pool.pool.Running()))
+				}
+			}
+
 			slog.Info("Pool status", "containers commit queues length", queLens)
 			s.pool.mutex.Unlock()
 		}
@@ -345,11 +367,31 @@ func (s *Server) RuntimeConfig(ctx context.Context, request *runtimeapi.RuntimeC
 	return s.client.RuntimeConfig(ctx, request)
 }
 
+func (s *Server) Init() {
+	slog.Info("Start to add container state to pool")
+	ctx := context.Background()
+	request := &runtimeapi.ListContainerStatsRequest{}
+	list, err := s.client.ListContainerStats(ctx, request)
+	if err != nil {
+		slog.Error("failed to list container stats", "error", err)
+	}
+	for _, i := range list.Stats {
+		_, info, err := s.GetContainerInfo(ctx, i.Attributes.Id)
+		if err != nil {
+			slog.Error("failed to get container env", "error", err)
+		}
+		if info.CommitEnabled {
+			s.pool.containerStateMap[i.Attributes.Id] = runtimeapi.ContainerState_CONTAINER_RUNNING
+		}
+	}
+}
+
 func (s *Server) CommitContainer(task types.Task) error {
 	slog.Info("Doing commit container task", "task", task)
 
 	defer s.pool.ContainerCommittingLock[task.ContainerID].Unlock()
 
+	start := time.Now()
 	commitFlag := true
 	if status, exists := s.pool.CommitStatusMap[task.ContainerID]; exists {
 		commitFlag = types.StopCommit != status
@@ -375,16 +417,21 @@ func (s *Server) CommitContainer(task types.Task) error {
 			return err
 		}
 		//commit image
-
 		ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
 		imageName := registry.GetImageRef(info.CommitImage)
 		initialImageName := imageName + "-initial"
 
-		if err := retry.Do(func() error {
-			return s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false)
-		}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)); err != nil {
+		if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
 			slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+
+			if s.options.MetricFlag {
+				if counter, err := s.MetricClient.Int64Counter("cri_shim_error_commit_counter", metric.WithDescription("The number of error commit")); err != nil {
+					slog.Debug("failed to get counter of cri_shim_error_commit_counter", "error", err)
+				} else {
+					counter.Add(ctx, 1)
+				}
+			}
 			return err
 		}
 
@@ -417,6 +464,9 @@ func (s *Server) CommitContainer(task types.Task) error {
 			}
 		} else {
 			slog.Debug("did not push container", "image name", imageName)
+		}
+		if s.options.MetricFlag {
+			s.MetricCommit(start, ctx)
 		}
 	}
 
@@ -479,5 +529,22 @@ func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (regi
 		}
 	}
 	return registry, info, nil
+}
 
+func (s *Server) MetricCommit(start time.Time, ctx context.Context) {
+	if counter, err := s.MetricClient.Int64Counter("cri_shim_commit_counter", metric.WithDescription("The number of commit container")); err != nil {
+		slog.Debug("failed to get counter of cri_shim_commit_counter", "error", err)
+	} else {
+		counter.Add(ctx, 1)
+	}
+
+	if histogram, err := s.MetricClient.Float64Histogram(
+		"cri_shim_commit_duration",
+		metric.WithDescription("a histogram for commit time"),
+		metric.WithExplicitBucketBoundaries(0, 20, 40, 60, 80, 100, 120, 150, 200, 300),
+	); err != nil {
+		slog.Debug("failed to get histogram of cri_shim_commit_duration", "error", err)
+	} else {
+		histogram.Record(ctx, time.Since(start).Seconds())
+	}
 }
