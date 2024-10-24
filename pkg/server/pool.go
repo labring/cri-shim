@@ -76,28 +76,27 @@ func (p *Pool) SubmitTask(task types.Task) {
 		}
 
 		if task.ContainerState == runtimeapi.ContainerState_CONTAINER_EXITED {
-			slog.Info("Add task to the queue because container stopped", "ContainerID", task.ContainerID, "Kind", task.Kind)
 			p.containerStateMap[task.ContainerID] = task.ContainerState
-			if queue := p.getQueue(task.ContainerID); len(queue) < 4 {
-				queue <- task
-			}
+			p.sendTask(task)
 		}
 	} else {
-		slog.Info("Add task to the queue", "ContainerID", task.ContainerID, "Kind", task.Kind)
-		if queue := p.getQueue(task.ContainerID); len(queue) < 4 {
-			queue <- task
-		}
+		p.sendTask(task)
 	}
 }
 
-func (p *Pool) getQueue(containerID string) chan types.Task {
-	if _, exists := p.queues[containerID]; !exists {
+func (p *Pool) sendTask(task types.Task) {
+	if _, exists := p.queues[task.ContainerID]; !exists {
 		queue := make(chan types.Task, 5)
-		p.queues[containerID] = queue
-		p.ContainerCommittingLock[containerID] = &sync.Mutex{}
+		p.queues[task.ContainerID] = queue
+		p.ContainerCommittingLock[task.ContainerID] = &sync.Mutex{}
 		go p.startConsumer(queue)
 	}
-	return p.queues[containerID]
+	select {
+	case p.queues[task.ContainerID] <- task:
+		slog.Info("Add task to the queue", "ContainerID", task.ContainerID, "Kind", task.Kind)
+	default:
+		slog.Info("throw task when queue full", "ContainerID", task.ContainerID, "Kind", task.Kind)
+	}
 }
 
 func (p *Pool) startConsumer(queue chan types.Task) {
