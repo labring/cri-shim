@@ -205,12 +205,22 @@ func (s *Server) StartContainer(ctx context.Context, request *runtimeapi.StartCo
 func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopContainerRequest) (*runtimeapi.StopContainerResponse, error) {
 	// todo check container env and create commit
 	slog.Info("Doing stop container request", "request", request)
-	_, info, err := s.GetContainerInfo(ctx, request.ContainerId)
+	_, info, sandboxId, err := s.GetContainerInfo(ctx, request.ContainerId)
 	if err != nil {
 		return nil, err
 	}
 	if info.CommitEnabled {
 		slog.Info("commit flag found when doing stop container request", "container id", request.ContainerId)
+
+		req := &runtimeapi.PodSandboxStatusRequest{
+			PodSandboxId: sandboxId,
+		}
+		sandboxResp, _ := s.client.PodSandboxStatus(ctx, req)
+		if sandboxResp.Status.State == runtimeapi.PodSandboxState_SANDBOX_NOTREADY {
+			slog.Info("Remove not ready sandbox", "sandbox id", sandboxId)
+			return s.client.StopContainer(ctx, request)
+		}
+
 		s.pool.SubmitTask(types.Task{
 			Kind:        types.KindStop,
 			ContainerID: request.ContainerId,
@@ -235,12 +245,22 @@ func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.Remove
 		return s.client.RemoveContainer(ctx, request)
 	}
 
-	_, info, err := s.GetContainerInfo(ctx, request.ContainerId)
+	_, info, sandboxId, err := s.GetContainerInfo(ctx, request.ContainerId)
 	if err != nil {
 		return nil, err
 	}
 	if info.CommitEnabled {
 		slog.Info("commit flag found when doing remove container request", "container id", request.ContainerId)
+
+		req := &runtimeapi.PodSandboxStatusRequest{
+			PodSandboxId: sandboxId,
+		}
+		sandboxResp, _ := s.client.PodSandboxStatus(ctx, req)
+		if sandboxResp.Status.State == runtimeapi.PodSandboxState_SANDBOX_NOTREADY {
+			slog.Info("Remove not ready sandbox", "sandbox id", sandboxId)
+			return s.client.RemoveContainer(ctx, request)
+		}
+
 		s.pool.SubmitTask(types.Task{
 			Kind:        types.KindRemove,
 			ContainerID: request.ContainerId,
@@ -257,13 +277,22 @@ func (s *Server) ListContainers(ctx context.Context, request *runtimeapi.ListCon
 
 func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.ContainerStatusRequest) (*runtimeapi.ContainerStatusResponse, error) {
 	slog.Debug("Doing container status request", "request", request)
-	_, info, err := s.GetContainerInfo(ctx, request.ContainerId)
+	_, info, sandboxId, err := s.GetContainerInfo(ctx, request.ContainerId)
 	if err != nil {
 		slog.Error("failed to get container env", "error", err)
 		return s.client.ContainerStatus(ctx, request)
 	}
 	resp, err := s.client.ContainerStatus(ctx, request)
 	if info.CommitEnabled {
+		req := &runtimeapi.PodSandboxStatusRequest{
+			PodSandboxId: sandboxId,
+		}
+		sandboxResp, _ := s.client.PodSandboxStatus(ctx, req)
+		if sandboxResp.Status.State == runtimeapi.PodSandboxState_SANDBOX_NOTREADY {
+			slog.Info("skip not ready sandbox commit", "sandbox id", sandboxId)
+			return resp, nil
+		}
+
 		slog.Info("commit flag found when doing container status request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
 			Kind:           types.KindStatus,
@@ -376,11 +405,19 @@ func (s *Server) Init() {
 		slog.Error("failed to list container stats", "error", err)
 	}
 	for _, i := range list.Stats {
-		_, info, err := s.GetContainerInfo(ctx, i.Attributes.Id)
+		_, info, sandboxId, err := s.GetContainerInfo(ctx, i.Attributes.Id)
 		if err != nil {
 			slog.Error("failed to get container env", "error", err)
 		}
 		if info.CommitEnabled {
+			req := &runtimeapi.PodSandboxStatusRequest{
+				PodSandboxId: sandboxId,
+			}
+			sandboxResp, _ := s.client.PodSandboxStatus(ctx, req)
+			if sandboxResp.Status.State == runtimeapi.PodSandboxState_SANDBOX_NOTREADY {
+				slog.Info("Remove not ready sandbox", "sandbox id", sandboxId)
+				continue
+			}
 			s.pool.containerStateMap[i.Attributes.Id] = runtimeapi.ContainerState_CONTAINER_RUNNING
 		}
 	}
@@ -410,7 +447,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 			return err
 		}
 
-		registry, info, err := s.GetContainerInfo(ctx, task.ContainerID)
+		registry, info, _, err := s.GetContainerInfo(ctx, task.ContainerID)
 
 		if err != nil {
 			slog.Error("failed to get container env", "error", err)
@@ -484,20 +521,26 @@ func (s *Server) CommitContainer(task types.Task) error {
 	return nil
 }
 
-func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (registry *imageutil.Registry, info *container.Info, err error) {
+func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (registry *imageutil.Registry, info *container.Info, sandboxId string, err error) {
 	registry = &imageutil.Registry{}
 	info = &container.Info{}
-
+	sandboxId = ""
 	ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
 
 	c, err := s.containerdClient.LoadContainer(ctx, containerID)
 	if err != nil {
-		return registry, info, err
+		return registry, info, sandboxId, err
 	}
 	spec, err := c.Spec(ctx)
 	if err != nil {
-		return registry, info, err
+		return registry, info, sandboxId, err
 	}
+	containerInfo, err := c.Info(ctx)
+	if err != nil {
+		return registry, info, sandboxId, err
+	}
+	sandboxId = containerInfo.SandboxID
+
 	slog.Debug("Got container info env", "info env", spec.Process.Env)
 	for _, env := range spec.Process.Env {
 		kv := strings.SplitN(env, "=", 2)
@@ -528,7 +571,7 @@ func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (regi
 			info.PushEnabled = false
 		}
 	}
-	return registry, info, nil
+	return registry, info, sandboxId, nil
 }
 
 func (s *Server) MetricCommit(start time.Time, ctx context.Context) {
