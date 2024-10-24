@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avast/retry-go"
-
 	"github.com/labring/cri-shim/pkg/container"
 	imageutil "github.com/labring/cri-shim/pkg/image"
 	netutil "github.com/labring/cri-shim/pkg/net"
@@ -380,9 +378,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 		imageName := registry.GetImageRef(info.CommitImage)
 		initialImageName := imageName + "-initial"
 
-		if err := retry.Do(func() error {
-			return s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false)
-		}, retry.Attempts(3), retry.Delay(5*time.Second), retry.LastErrorOnly(true)); err != nil {
+		if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
 			slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
 			return err
@@ -432,6 +428,25 @@ func (s *Server) CommitContainer(task types.Task) error {
 	}
 
 	return nil
+}
+
+func (s *Server) Init() {
+	slog.Info("Start to add container state to pool")
+	ctx := context.Background()
+	request := &runtimeapi.ListContainerStatsRequest{}
+	list, err := s.client.ListContainerStats(ctx, request)
+	if err != nil {
+		slog.Error("failed to list container stats", "error", err)
+	}
+	for _, i := range list.Stats {
+		_, info, err := s.GetContainerInfo(ctx, i.Attributes.Id)
+		if err != nil {
+			slog.Error("failed to get container env", "error", err)
+		}
+		if info.CommitEnabled {
+			s.pool.containerStateMap[i.Attributes.Id] = runtimeapi.ContainerState_CONTAINER_RUNNING
+		}
+	}
 }
 
 func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (registry *imageutil.Registry, info *container.Info, err error) {

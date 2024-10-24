@@ -34,7 +34,7 @@ func BindOptions(cmd *cobra.Command) *Config {
 	cmd.Flags().StringVar(&cfg.GlobalRegistryPassword, "global-registry-password", "", "Global registry password")
 	cmd.Flags().StringVar(&cfg.GlobalRegistryRepo, "global-registry-repository", "", "Global registry repository")
 	cmd.Flags().StringVar(&cfg.ContainerdNamespace, "containerd-namespace", "k8s.io", "Containerd namespace")
-	cmd.Flags().IntVar(&cfg.PoolSize, "pool-size", 100, "Pool size")
+	cmd.Flags().IntVar(&cfg.PoolSize, "pool-size", 10, "Pool size")
 	cmd.Flags().BoolVar(&cfg.Debug, "debug", false, "enable debug logging")
 	cmd.Flags().BoolVar(&cfg.Trace, "trace", false, "enable pprof to trace")
 	return cfg
