@@ -120,6 +120,8 @@ func (s *Server) PoolStatus() error {
 			s.pool.mutex.Lock()
 			slog.Info("Pool status", "finished containers", s.pool.CommitStatusMap)
 			slog.Info("Pool status", "containers state", s.pool.containerStateMap)
+			slog.Info("Pool status", "pool worker num", int64(s.pool.pool.Running()))
+
 			queLens := make(map[string]int)
 			for containerID, queue := range s.pool.queues {
 				queLens[containerID] = len(queue)
@@ -265,7 +267,7 @@ func (s *Server) ContainerStatus(ctx context.Context, request *runtimeapi.Contai
 	}
 	resp, err := s.client.ContainerStatus(ctx, request)
 	if info.CommitEnabled {
-		slog.Info("commit flag found when doing container status request", "container id", request.ContainerId)
+		slog.Debug("commit flag found when doing container status request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
 			Kind:           types.KindStatus,
 			ContainerID:    request.ContainerId,
@@ -416,6 +418,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 			}
 			return err
 		}
+		slog.Info("commit container time", "containerId", statusResp.Status.Id, "time", time.Since(start).Seconds())
 
 		defer s.imageClient.Remove(ctx, initialImageName, false, false)
 
@@ -444,6 +447,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 				slog.Error("failed to push container", "error", err, "image name", imageName)
 				return err
 			}
+			slog.Info("pushed image time", "image name", imageName, "time", time.Since(start).Seconds())
 		} else {
 			slog.Debug("did not push container", "image name", imageName)
 		}
