@@ -23,6 +23,17 @@ type Config struct {
 	PoolSize               int
 	Debug                  bool
 	Trace                  bool
+	MetricsConfig          MetricsConfig
+}
+
+type MetricsConfig struct {
+	Metric       bool
+	Endpoint     string
+	IngestPath   string
+	IsSecure     bool
+	PushInterval int
+	JobName      string
+	Instance     string
 }
 
 func BindOptions(cmd *cobra.Command) *Config {
@@ -37,5 +48,12 @@ func BindOptions(cmd *cobra.Command) *Config {
 	cmd.Flags().IntVar(&cfg.PoolSize, "pool-size", 10, "Pool size")
 	cmd.Flags().BoolVar(&cfg.Debug, "debug", false, "enable debug logging")
 	cmd.Flags().BoolVar(&cfg.Trace, "trace", false, "enable pprof to trace")
+	cmd.Flags().BoolVar(&cfg.MetricsConfig.Metric, "metric", false, "enable otel to metric")
+	cmd.Flags().StringVar(&cfg.MetricsConfig.Endpoint, "metric-endpoint", "localhost:8428", "VictoriaMetrics endpoint - host:port")
+	cmd.Flags().StringVar(&cfg.MetricsConfig.IngestPath, "metric-ingestPath", "/opentelemetry/api/v1/push", "url path for ingestion path")
+	cmd.Flags().BoolVar(&cfg.MetricsConfig.IsSecure, "metric-isSecure", false, "enables https connection for metrics push")
+	cmd.Flags().IntVar(&cfg.MetricsConfig.PushInterval, "metric-pushInterval", 5, "how often push samples, aka scrapeInterval at pull model")
+	cmd.Flags().StringVar(&cfg.MetricsConfig.JobName, "metric-jobName", "cri-shim", "job name for web-application")
+	cmd.Flags().StringVar(&cfg.MetricsConfig.Instance, "metric-instance", "localhost", "hostname of web-application instance")
 	return cfg
 }
