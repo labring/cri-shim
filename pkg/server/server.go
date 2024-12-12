@@ -400,13 +400,12 @@ func (s *Server) CommitContainer(task types.Task) error {
 			slog.Error("failed to get container env", "error", err)
 			return err
 		}
-		//commit image
 
 		ctx = namespaces.WithNamespace(ctx, s.options.ContainerdNamespace)
 		imageName := registry.GetImageRef(info.CommitImage)
 		initialImageName := imageName + "-initial"
 
-		if s.imageClient.Pull(ctx, imageName) != nil {
+		if s.imageClient.Pull(ctx, info.ImageRef) != nil {
 			slog.Error("failed to pull image", "image name", imageName)
 		}
 
@@ -505,8 +504,14 @@ func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (regi
 	}
 	spec, err := c.Spec(ctx)
 	if err != nil {
+		return nil, nil, err
+	}
+	image, err := c.Image(ctx)
+	if err != nil {
 		return registry, info, err
 	}
+	info.ImageRef = image.Name()
+
 	slog.Debug("Got container info env", "info env", spec.Process.Env)
 	for _, env := range spec.Process.Env {
 		kv := strings.SplitN(env, "=", 2)
