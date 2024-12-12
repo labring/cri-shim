@@ -406,6 +406,10 @@ func (s *Server) CommitContainer(task types.Task) error {
 		imageName := registry.GetImageRef(info.CommitImage)
 		initialImageName := imageName + "-initial"
 
+		if s.imageClient.Pull(ctx, imageName) != nil {
+			slog.Error("failed to pull image", "image name", imageName)
+		}
+
 		if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
 			slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
