@@ -405,8 +405,14 @@ func (s *Server) CommitContainer(task types.Task) error {
 		imageName := registry.GetImageRef(info.CommitImage)
 		initialImageName := imageName + "-initial"
 
-		if s.imageClient.Pull(ctx, info.ImageRef) != nil {
-			slog.Error("failed to pull image", "image name", imageName)
+		if registry.UserName == "" {
+			registry.UserName = s.globalRegistryOptions.UserName
+		}
+		if registry.Password == "" {
+			registry.Password = s.globalRegistryOptions.Password
+		}
+		if err = s.imageClient.Pull(ctx, info.ImageRef, registry.UserName, registry.Password); err != nil {
+			slog.Error("failed to pull image", "image name", imageName, "error", err)
 		}
 
 		if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
@@ -440,12 +446,6 @@ func (s *Server) CommitContainer(task types.Task) error {
 		}
 
 		if info.PushEnabled {
-			if registry.UserName == "" {
-				registry.UserName = s.globalRegistryOptions.UserName
-			}
-			if registry.Password == "" {
-				registry.Password = s.globalRegistryOptions.Password
-			}
 			if err = s.imageClient.Push(ctx, imageName, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to push container", "error", err, "image name", imageName)
 				return err
@@ -506,11 +506,11 @@ func (s *Server) GetContainerInfo(ctx context.Context, containerID string) (regi
 	if err != nil {
 		return nil, nil, err
 	}
-	image, err := c.Image(ctx)
+	containerInfo, err := c.Info(ctx)
 	if err != nil {
 		return registry, info, err
 	}
-	info.ImageRef = image.Name()
+	info.ImageRef = containerInfo.Image
 
 	slog.Debug("Got container info env", "info env", spec.Process.Env)
 	for _, env := range spec.Process.Env {

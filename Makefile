@@ -59,7 +59,7 @@ test/cover:
 ## build: build the application
 .PHONY: build
 build:
-	GOOS=linux go build -o=./bin/${BINARY_NAME} ${MAIN_PACKAGE_PATH}
+	GOOS=linux GOARCH=amd64 go build -o=./bin/${BINARY_NAME} ${MAIN_PACKAGE_PATH}
 
 ## run: run the  application
 .PHONY: run
