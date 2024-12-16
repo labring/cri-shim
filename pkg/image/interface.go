@@ -216,7 +216,7 @@ func (impl *imageInterfaceImpl) Pull(ctx context.Context, args, username, passwo
 	}
 
 	// pull image
-	_, err = impl.Client.Pull(ctx, args, containerd.WithResolver(resolver))
+	_, err = impl.Client.Pull(ctx, args, containerd.WithResolver(resolver), containerd.WithPullUnpack)
 	if err != nil {
 		slog.Error("Pull image error ", "Image", args, "Error", err)
 		return err
