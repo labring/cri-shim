@@ -75,11 +75,18 @@ func (p *Pool) SubmitTask(task types.Task) {
 			return
 		}
 
+		if p.CommitStatusMap[task.ContainerID] == types.ErrorPush {
+			task.Kind = types.KindPush
+		}
+
 		if task.ContainerState == runtimeapi.ContainerState_CONTAINER_EXITED {
 			p.containerStateMap[task.ContainerID] = task.ContainerState
 			p.sendTask(task)
 		}
 	} else {
+		if p.CommitStatusMap[task.ContainerID] == types.ErrorPush {
+			task.Kind = types.KindPush
+		}
 		p.sendTask(task)
 	}
 }

@@ -10,6 +10,7 @@ const (
 	KindRemove Kind = iota
 	KindStop
 	KindStatus
+	KindPush
 )
 
 type Task struct {
