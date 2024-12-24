@@ -26,6 +26,7 @@ import (
 // ImageInterface defines the interface for image operations
 type ImageInterface interface {
 	Push(ctx context.Context, args, username, password string) error
+	Pull(context.Context, string, string, string) error
 	Commit(ctx context.Context, imageName, containerID string, pause bool) error
 	Login(ctx context.Context, serverAddress, username, password string) error
 	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
@@ -203,4 +204,23 @@ func (impl *imageInterfaceImpl) Squash(ctx context.Context, SourceImageRef, Targ
 	}
 	defer done(ctx)
 	return impl.SquashClient.Squash(ctx, opt)
+}
+
+func (impl *imageInterfaceImpl) Pull(ctx context.Context, args, username, password string) error {
+
+	//set resolver
+	resolver, err := GetResolver(ctx, username, password)
+	if err != nil {
+		slog.Error("failed to set resolver", "Image", args, "Error", err)
+		return err
+	}
+
+	// pull image
+	_, err = impl.Client.Pull(ctx, args, containerd.WithResolver(resolver), containerd.WithPullUnpack)
+	if err != nil {
+		slog.Error("Pull image error ", "Image", args, "Error", err)
+		return err
+	}
+	slog.Info("Pull image success", "Image", args)
+	return nil
 }
