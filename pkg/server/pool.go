@@ -60,6 +60,10 @@ func (p *Pool) SubmitTask(task types.Task) {
 		slog.Info("Skip task, commit finished", "ContainerID", task.ContainerID, "Kind", task.Kind)
 		return
 	}
+	task.CommitState = false
+	if p.CommitStatusMap[task.ContainerID] == types.ErrorPush {
+		task.CommitState = true
+	}
 	if task.Kind == types.KindStatus {
 		if task.ContainerState == runtimeapi.ContainerState_CONTAINER_UNKNOWN {
 			slog.Debug("Skip task, invalid state", "ContainerID", task.ContainerID, "Kind", task.Kind, "State", task.ContainerState)
@@ -74,7 +78,6 @@ func (p *Pool) SubmitTask(task types.Task) {
 			slog.Debug("Skip task, same state", "ContainerID", task.ContainerID, "Kind", task.Kind)
 			return
 		}
-
 		if task.ContainerState == runtimeapi.ContainerState_CONTAINER_EXITED {
 			p.containerStateMap[task.ContainerID] = task.ContainerState
 			p.sendTask(task)

@@ -411,43 +411,46 @@ func (s *Server) CommitContainer(task types.Task) error {
 		if registry.Password == "" {
 			registry.Password = s.globalRegistryOptions.Password
 		}
-		if err = s.imageClient.Pull(ctx, info.ImageRef, registry.UserName, registry.Password); err != nil {
-			slog.Error("failed to pull image", "image name", imageName, "error", err)
-		}
 
-		if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
-			slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
-			s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
-			if s.options.MetricFlag {
-				if counter, err := s.MetricClient.Int64Counter("cri_shim_error_commit_counter", metric.WithDescription("The number of error commit")); err != nil {
-					slog.Debug("failed to get counter of cri_shim_error_commit_counter", "error", err)
-				} else {
-					counter.Add(ctx, 1)
+		if !task.CommitState {
+			if err = s.imageClient.Pull(ctx, info.ImageRef, registry.UserName, registry.Password); err != nil {
+				slog.Error("failed to pull image", "image name", imageName, "error", err)
+			}
+
+			if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
+				slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
+				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+				if s.options.MetricFlag {
+					if counter, err := s.MetricClient.Int64Counter("cri_shim_error_commit_counter", metric.WithDescription("The number of error commit")); err != nil {
+						slog.Debug("failed to get counter of cri_shim_error_commit_counter", "error", err)
+					} else {
+						counter.Add(ctx, 1)
+					}
 				}
-			}
-			return err
-		}
-		slog.Info("commit container time", "containerId", statusResp.Status.Id, "time", time.Since(start).Seconds())
-
-		defer s.imageClient.Remove(ctx, initialImageName, false, false)
-
-		if info.SquashEnabled {
-			if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
-				slog.Error("failed to squash image", "image name", imageName, "error", err)
-				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
 				return err
 			}
-		} else {
-			if err = s.imageClient.Tag(ctx, initialImageName, imageName); err != nil {
-				slog.Error("failed to tag image", "image name", imageName, "error", err)
-				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
-				return err
+			slog.Info("commit container time", "containerId", statusResp.Status.Id, "time", time.Since(start).Seconds())
+			defer s.imageClient.Remove(ctx, initialImageName, false, false)
+
+			if info.SquashEnabled {
+				if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
+					slog.Error("failed to squash image", "image name", imageName, "error", err)
+					s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+					return err
+				}
+			} else {
+				if err = s.imageClient.Tag(ctx, initialImageName, imageName); err != nil {
+					slog.Error("failed to tag image", "image name", imageName, "error", err)
+					s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+					return err
+				}
 			}
 		}
 
 		if info.PushEnabled {
 			if err = s.imageClient.Push(ctx, imageName, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to push container", "error", err, "image name", imageName)
+				s.pool.SetCommitStatus(task.ContainerID, types.ErrorPush)
 				return err
 			}
 			slog.Info("pushed image time", "image name", imageName, "time", time.Since(start).Seconds())
@@ -462,14 +465,12 @@ func (s *Server) CommitContainer(task types.Task) error {
 	switch task.Kind {
 	case types.KindRemove:
 		s.pool.ClearTasks(task.ContainerID)
-		// do remove container request, ignore error
 		_, _ = s.client.RemoveContainer(ctx, &runtimeapi.RemoveContainerRequest{ContainerId: task.ContainerID})
 	case types.KindStop:
 		s.pool.SetCommitStatus(task.ContainerID, types.StopCommit)
 	case types.KindStatus:
 		s.pool.SetCommitStatus(task.ContainerID, types.StatusCommit)
 	}
-
 	return nil
 }
 
