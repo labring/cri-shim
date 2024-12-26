@@ -10,11 +10,11 @@ const (
 	KindRemove Kind = iota
 	KindStop
 	KindStatus
-	KindPush
 )
 
 type Task struct {
 	Kind           Kind
 	ContainerID    string
 	ContainerState runtimeapi.ContainerState
+	CommitState    bool
 }

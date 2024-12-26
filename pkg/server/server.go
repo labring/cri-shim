@@ -412,7 +412,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 			registry.Password = s.globalRegistryOptions.Password
 		}
 
-		if task.Kind == types.KindPush {
+		if !task.CommitState {
 			if err = s.imageClient.Pull(ctx, info.ImageRef, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to pull image", "image name", imageName, "error", err)
 			}
