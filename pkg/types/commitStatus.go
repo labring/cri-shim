@@ -8,4 +8,5 @@ const (
 	RemoveCommit
 	StatusCommit
 	ErrorCommit
+	ErrorPush
 )
