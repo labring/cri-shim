@@ -21,6 +21,7 @@ type Config struct {
 	GlobalRegistryRepo     string
 	ContainerdNamespace    string
 	PoolSize               int
+	Estargz                bool
 	Debug                  bool
 	Trace                  bool
 	MetricsConfig          MetricsConfig
@@ -48,6 +49,7 @@ func BindOptions(cmd *cobra.Command) *Config {
 	cmd.Flags().IntVar(&cfg.PoolSize, "pool-size", 10, "Pool size")
 	cmd.Flags().BoolVar(&cfg.Debug, "debug", false, "enable debug logging")
 	cmd.Flags().BoolVar(&cfg.Trace, "trace", false, "enable pprof to trace")
+	cmd.Flags().BoolVar(&cfg.Estargz, "estargz", false, "enable estargz image")
 	cmd.Flags().BoolVar(&cfg.MetricsConfig.Metric, "metric", false, "enable otel to metric")
 	cmd.Flags().StringVar(&cfg.MetricsConfig.Endpoint, "metric-endpoint", "localhost:8428", "VictoriaMetrics endpoint - host:port")
 	cmd.Flags().StringVar(&cfg.MetricsConfig.IngestPath, "metric-ingestPath", "/opentelemetry/api/v1/push", "url path for ingestion path")
