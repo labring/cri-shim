@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	metrics "github.com/labring/cri-shim/pkg/metric"
-	"go.opentelemetry.io/otel"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,10 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
+
 	imageutil "github.com/labring/cri-shim/pkg/image"
+	metrics "github.com/labring/cri-shim/pkg/metric"
 	"github.com/labring/cri-shim/pkg/server"
 	"github.com/labring/cri-shim/pkg/types"
-	"github.com/spf13/cobra"
 )
 
 var cfg *types.Config
@@ -39,6 +40,7 @@ func run(cfg *types.Config) {
 			CRISocket:           cfg.RuntimeSocket,
 			ContainerdNamespace: cfg.ContainerdNamespace,
 			PoolSize:            cfg.PoolSize,
+			Estargz:             cfg.Estargz,
 			MetricFlag:          cfg.MetricsConfig.Metric,
 		},
 		imageutil.RegistryOptions{

@@ -29,6 +29,7 @@ type ImageInterface interface {
 	Pull(context.Context, string, string, string) error
 	Commit(ctx context.Context, imageName, containerID string, pause bool) error
 	Login(ctx context.Context, serverAddress, username, password string) error
+	ConvertToEstargz(ctx context.Context, srcRawRef, destRawRef string) error
 	Squash(ctx context.Context, SourceImageRef, TargetImageName string) error
 	Remove(ctx context.Context, args string, force, async bool) error
 	Tag(ctx context.Context, src, dest string) error
@@ -94,11 +95,12 @@ func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, container
 // convert converts an image to the specified format
 // srcRawRef: the source image reference
 // destRawRef: the destination image reference
-func (impl *imageInterfaceImpl) convert(ctx context.Context, srcRawRef, destRawRef string) error {
+func (impl *imageInterfaceImpl) ConvertToEstargz(ctx context.Context, srcRawRef, destRawRef string) error {
 	slog.Info("Converting image", "Source", srcRawRef, "Destination", destRawRef)
 	opt := types.ImageConvertOptions{
 		GOptions: impl.GlobalOptions,
 		Oci:      true,
+		Estargz:  true,
 		Stdout:   impl.Stdout,
 	}
 	return image.Convert(ctx, impl.Client, srcRawRef, destRawRef, opt)

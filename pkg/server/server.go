@@ -2,13 +2,14 @@ package server
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/metric"
 	"log/slog"
 	"net"
 	"os"
 	"runtime"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/labring/cri-shim/pkg/container"
 	imageutil "github.com/labring/cri-shim/pkg/image"
@@ -38,6 +39,7 @@ type Options struct {
 	// PoolSize is the size of the pool of goroutines.
 	PoolSize int
 
+	Estargz    bool
 	MetricFlag bool
 }
 
@@ -416,8 +418,8 @@ func (s *Server) CommitContainer(task types.Task) error {
 			if err = s.imageClient.Pull(ctx, info.ImageRef, registry.UserName, registry.Password); err != nil {
 				slog.Error("failed to pull image", "image name", imageName, "error", err)
 			}
-
-			if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
+			currentImageName := initialImageName
+			if err := s.imageClient.Commit(ctx, currentImageName, statusResp.Status.Id, false); err != nil {
 				slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
 				if s.options.MetricFlag {
@@ -433,17 +435,27 @@ func (s *Server) CommitContainer(task types.Task) error {
 			defer s.imageClient.Remove(ctx, initialImageName, false, false)
 
 			if info.SquashEnabled {
-				if err = s.imageClient.Squash(ctx, initialImageName, imageName); err != nil {
+				slog.Info("squash enabled, start squash image")
+				if err = s.imageClient.Squash(ctx, currentImageName, currentImageName+"-squashed"); err != nil {
 					slog.Error("failed to squash image", "image name", imageName, "error", err)
 					s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
 					return err
 				}
-			} else {
-				if err = s.imageClient.Tag(ctx, initialImageName, imageName); err != nil {
-					slog.Error("failed to tag image", "image name", imageName, "error", err)
+				currentImageName = currentImageName + "-squashed"
+			}
+			if s.options.Estargz {
+				slog.Info("estargz enabled, start convert to estargz image")
+				if err = s.imageClient.ConvertToEstargz(ctx, currentImageName, currentImageName+"-converted"); err != nil {
+					slog.Error("failed to convert image to estargz", "image name", imageName, "error", err)
 					s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
 					return err
 				}
+				currentImageName = currentImageName + "-converted"
+			}
+			if err = s.imageClient.Tag(ctx, currentImageName, imageName); err != nil {
+				slog.Error("failed to tag image", "image name", imageName, "error", err)
+				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
+				return err
 			}
 		}
 
