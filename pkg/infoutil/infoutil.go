@@ -9,7 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/v2/client"
 )
 
 var (
@@ -47,7 +47,7 @@ func GetVersion() string {
 	return unknown
 }
 
-func GetServerVersion(ctx context.Context, client *containerd.Client) (*ServerVersion, error) {
+func GetServerVersion(ctx context.Context, client *client.Client) (*ServerVersion, error) {
 	daemonVersion, err := client.Version(ctx)
 	if err != nil {
 		return nil, err
