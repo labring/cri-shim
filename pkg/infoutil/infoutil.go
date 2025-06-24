@@ -14,17 +14,21 @@ import (
 
 var (
 	// Version is filled via Makefile
-	Version = ""
+	Version    = ""
+	CommitHash = ""
+	BuildTime  = ""
 )
 
 const unknown = "<unknown>"
 
 func GetClientVersion() ClientVersion {
 	return ClientVersion{
-		Version:   GetVersion(),
-		GoVersion: runtime.Version(),
-		Os:        runtime.GOOS,
-		Arch:      runtime.GOARCH,
+		Version:    GetVersion(),
+		GoVersion:  runtime.Version(),
+		Os:         runtime.GOOS,
+		Arch:       runtime.GOARCH,
+		CommitHash: CommitHash,
+		BuildTime:  BuildTime,
 	}
 }
 

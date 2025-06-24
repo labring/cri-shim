@@ -6,10 +6,12 @@ type VersionInfo struct {
 }
 
 type ClientVersion struct {
-	Version   string
-	GoVersion string
-	Os        string // GOOS
-	Arch      string // GOARCH
+	Version    string
+	GoVersion  string
+	Os         string // GOOS
+	Arch       string // GOARCH
+	CommitHash string
+	BuildTime  string
 }
 
 type ComponentVersion struct {

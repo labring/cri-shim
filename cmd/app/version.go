@@ -5,10 +5,12 @@ import (
 	"io"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/containerd/nerdctl/v2/pkg/clientutil"
+
 	"github.com/labring/cri-shim/pkg/infoutil"
 	"github.com/labring/cri-shim/pkg/types"
-	"github.com/spf13/cobra"
 )
 
 func newVersionCmd() *cobra.Command {
@@ -30,6 +32,8 @@ func versionAction(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(w, " Version:\t%s\n", v.Client.Version)
 	fmt.Fprintf(w, " GO Version:\t%s\n", v.Client.GoVersion)
 	fmt.Fprintf(w, " OS/Arch:\t%s/%s\n", v.Client.Os, v.Client.Arch)
+	fmt.Fprintf(w, " Commit:\t%s\n", v.Client.CommitHash)
+	fmt.Fprintf(w, " Build Time:\t%s\n", v.Client.BuildTime)
 	if v.Server != nil {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Server:")

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/metric"
 	"log/slog"
 	"net"
 	"os"
@@ -10,13 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/labring/cri-shim/pkg/container"
 	imageutil "github.com/labring/cri-shim/pkg/image"
 	netutil "github.com/labring/cri-shim/pkg/net"
 	"github.com/labring/cri-shim/pkg/types"
 
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/namespaces"
+	"github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -45,7 +46,7 @@ type Server struct {
 	options               Options
 	globalRegistryOptions imageutil.RegistryOptions
 
-	containerdClient *containerd.Client
+	containerdClient *client.Client
 	client           runtimeapi.RuntimeServiceClient
 	server           *grpc.Server
 	listener         net.Listener
@@ -96,7 +97,7 @@ func (s *Server) Start() error {
 	s.client = runtimeapi.NewRuntimeServiceClient(conn)
 	runtimeapi.RegisterRuntimeServiceServer(s.server, s)
 
-	s.containerdClient, err = containerd.NewWithConn(conn, containerd.WithDefaultNamespace(s.options.ContainerdNamespace))
+	s.containerdClient, err = client.NewWithConn(conn, client.WithDefaultNamespace(s.options.ContainerdNamespace))
 	if err != nil {
 		return err
 	}
