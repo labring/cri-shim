@@ -4,8 +4,6 @@ go 1.23.5
 
 toolchain go1.24.4
 
-replace github.com/containerd/nerdctl/v2 => github.com/containerd/nerdctl/v2 v2.1.2
-
 require (
 	github.com/containerd/containerd/v2 v2.1.3
 	github.com/containerd/nerdctl/v2 v2.1.2
