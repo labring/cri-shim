@@ -52,6 +52,7 @@ func NewImageInterface(namespace, address string, fStdout *os.File) (ImageInterf
 	global := types.GlobalCommandOptions{
 		Namespace:        namespace,
 		Address:          address,
+		DataRoot:         "/var/lib/containerd",
 		InsecureRegistry: true,
 	}
 	impl := &imageInterfaceImpl{

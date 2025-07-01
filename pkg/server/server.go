@@ -419,7 +419,7 @@ func (s *Server) CommitContainer(task types.Task) error {
 			}
 
 			if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
-				slog.Error("failed to commit container after retries", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
+				slog.Error("failed to commit container", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
 				if s.options.MetricFlag {
 					if counter, err := s.MetricClient.Int64Counter("cri_shim_error_commit_counter", metric.WithDescription("The number of error commit")); err != nil {
