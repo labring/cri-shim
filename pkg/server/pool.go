@@ -103,20 +103,15 @@ func (p *Pool) sendTask(task types.Task) {
 }
 
 func (p *Pool) startConsumer(queue chan types.Task) {
-	for {
-		select {
-		case task, ok := <-queue:
-			if !ok {
-				slog.Info("Queue closed", "ContainerID", task.ContainerID)
-				return
-			}
-			p.ContainerCommittingLock[task.ContainerID].Lock()
-			slog.Info("Start to process task", "ContainerID", task.ContainerID, "Kind", task.Kind)
-			if err := p.pool.Invoke(task); err != nil {
-				slog.Error("Error happen when container commit", "error", err)
-			}
+	for task := range queue {
+		p.ContainerCommittingLock[task.ContainerID].Lock()
+		slog.Info("Start to process task", "ContainerID", task.ContainerID, "Kind", task.Kind)
+		if err := p.pool.Invoke(task); err != nil {
+			slog.Error("Error happen when container commit", "error", err)
 		}
+		p.ContainerCommittingLock[task.ContainerID].Unlock()
 	}
+	slog.Info("Queue closed")
 }
 
 // ClearTasks clears all tasks in the queue associated with the given containerID without closing the channel
