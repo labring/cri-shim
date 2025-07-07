@@ -3,7 +3,6 @@ package image
 import (
 	"context"
 	"fmt"
-
 	"io"
 	"log/slog"
 	"os"
@@ -85,7 +84,7 @@ func (impl *imageInterfaceImpl) Stop() {
 func (impl *imageInterfaceImpl) Commit(ctx context.Context, imageName, containerID string, pause bool) error {
 	slog.Info("Committing container", "ContainerID", containerID, "ImageName", imageName)
 	opt := types.ContainerCommitOptions{
-		Stdout:   impl.Stdout,
+		Stdout:   io.Discard,
 		GOptions: impl.GlobalOptions,
 		Pause:    pause,
 	}
@@ -153,14 +152,17 @@ func GetResolver(ctx context.Context, username string, secret string) (remotes.R
 		Tracker: docker.NewInMemoryTracker(),
 	}
 	hostOptions := config.HostOptions{}
-	hostOptions.Credentials = func(host string) (string, string, error) {
-		return username, secret, nil
+	if username == "" && secret == "" {
+		hostOptions.Credentials = nil
+	} else {
+		// TODO: fix this, use flags or configs to set mulit registry credentials
+		hostOptions.Credentials = func(host string) (string, string, error) {
+			return username, secret, nil
+		}
 	}
 	hostOptions.DefaultScheme = "http"
-
 	hostOptions.DefaultTLS = nil
 	resolverOptions.Hosts = config.ConfigureHosts(ctx, hostOptions)
-
 	return docker.NewResolver(resolverOptions), nil
 }
 
