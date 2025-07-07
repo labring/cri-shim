@@ -414,8 +414,17 @@ func (s *Server) CommitContainer(task types.Task) error {
 		}
 
 		if !task.CommitState {
-			if err = s.imageClient.Pull(ctx, info.ImageRef, registry.UserName, registry.Password); err != nil {
-				slog.Error("failed to pull image", "image name", imageName, "error", err)
+			// TODO: temp fix, add multi registry support
+			if strings.HasPrefix(info.ImageRef, s.globalRegistryOptions.RegistryAddr) {
+				slog.Info("image ref is a devbox commit image", "image ref", info.ImageRef)
+				if err = s.imageClient.Pull(ctx, info.ImageRef, registry.UserName, registry.Password); err != nil {
+					slog.Error("failed to pull image", "image name", imageName, "error", err)
+				}
+			} else {
+				slog.Info("image ref is not a devbox commit image", "image ref", info.ImageRef)
+				if err = s.imageClient.Pull(ctx, info.ImageRef, "", ""); err != nil {
+					slog.Error("failed to pull image", "image name", imageName, "error", err)
+				}
 			}
 
 			if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
