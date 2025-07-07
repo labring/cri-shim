@@ -9,22 +9,26 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/v2/client"
 )
 
 var (
 	// Version is filled via Makefile
-	Version = ""
+	Version    = ""
+	CommitHash = ""
+	BuildTime  = ""
 )
 
 const unknown = "<unknown>"
 
 func GetClientVersion() ClientVersion {
 	return ClientVersion{
-		Version:   GetVersion(),
-		GoVersion: runtime.Version(),
-		Os:        runtime.GOOS,
-		Arch:      runtime.GOARCH,
+		Version:    GetVersion(),
+		GoVersion:  runtime.Version(),
+		Os:         runtime.GOOS,
+		Arch:       runtime.GOARCH,
+		CommitHash: CommitHash,
+		BuildTime:  BuildTime,
 	}
 }
 
@@ -47,7 +51,7 @@ func GetVersion() string {
 	return unknown
 }
 
-func GetServerVersion(ctx context.Context, client *containerd.Client) (*ServerVersion, error) {
+func GetServerVersion(ctx context.Context, client *client.Client) (*ServerVersion, error) {
 	daemonVersion, err := client.Version(ctx)
 	if err != nil {
 		return nil, err

@@ -9,11 +9,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/leases"
-	"github.com/containerd/containerd/remotes"
-	"github.com/containerd/containerd/remotes/docker"
-	"github.com/containerd/containerd/remotes/docker/config"
+	"github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/core/leases"
+	"github.com/containerd/containerd/v2/core/remotes"
+	"github.com/containerd/containerd/v2/core/remotes/docker"
+	"github.com/containerd/containerd/v2/core/remotes/docker/config"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/clientutil"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
@@ -41,7 +41,7 @@ type imageInterfaceImpl struct {
 	FStdout       *os.File
 	Cancel        context.CancelFunc
 
-	Client       *containerd.Client
+	Client       *client.Client
 	SquashClient *runtime.Runtime
 }
 
@@ -52,6 +52,7 @@ func NewImageInterface(namespace, address string, fStdout *os.File) (ImageInterf
 	global := types.GlobalCommandOptions{
 		Namespace:        namespace,
 		Address:          address,
+		DataRoot:         "/var/lib/containerd",
 		InsecureRegistry: true,
 	}
 	impl := &imageInterfaceImpl{
@@ -137,7 +138,7 @@ func (impl *imageInterfaceImpl) Push(ctx context.Context, args, username, passwo
 
 	// push image
 	err = impl.Client.Push(ctx, args, imageRef.Target(),
-		containerd.WithResolver(resolver),
+		client.WithResolver(resolver),
 	)
 	if err != nil {
 		slog.Error("Push image error ", "Image", args, "Error", err)
@@ -216,7 +217,7 @@ func (impl *imageInterfaceImpl) Pull(ctx context.Context, args, username, passwo
 	}
 
 	// pull image
-	_, err = impl.Client.Pull(ctx, args, containerd.WithResolver(resolver), containerd.WithPullUnpack)
+	_, err = impl.Client.Pull(ctx, args, client.WithResolver(resolver), client.WithPullUnpack)
 	if err != nil {
 		slog.Error("Pull image error ", "Image", args, "Error", err)
 		return err
