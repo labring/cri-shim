@@ -213,6 +213,8 @@ func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopCont
 	if err != nil {
 		return nil, err
 	}
+	resp, err := s.client.StopContainer(ctx, request)
+	// after stop container, we need to commit the container
 	if info.CommitEnabled {
 		slog.Info("commit flag found when doing stop container request", "container id", request.ContainerId)
 		s.pool.SubmitTask(types.Task{
@@ -220,7 +222,7 @@ func (s *Server) StopContainer(ctx context.Context, request *runtimeapi.StopCont
 			ContainerID: request.ContainerId,
 		})
 	}
-	return s.client.StopContainer(ctx, request)
+	return resp, err
 }
 
 func (s *Server) RemoveContainer(ctx context.Context, request *runtimeapi.RemoveContainerRequest) (*runtimeapi.RemoveContainerResponse, error) {
@@ -427,7 +429,8 @@ func (s *Server) CommitContainer(task types.Task) error {
 				}
 			}
 
-			if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, false); err != nil {
+			// if container is running, we need to pause it before commit
+			if err := s.imageClient.Commit(ctx, initialImageName, statusResp.Status.Id, statusResp.Status.State == runtimeapi.ContainerState_CONTAINER_RUNNING); err != nil {
 				slog.Error("failed to commit container", "containerId", statusResp.Status.Id, "image name", initialImageName, "error", err)
 				s.pool.SetCommitStatus(task.ContainerID, types.ErrorCommit)
 				if s.options.MetricFlag {
