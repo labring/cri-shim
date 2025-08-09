@@ -2,7 +2,7 @@
 Description=sealos cri shim
 
 [Service]
-ExecStart=/usr/bin/cri-shim --cri-socket=unix:///var/run/containerd/containerd.sock --shim-socket=/var/run/sealos/cri-shim.sock
+ExecStart=/usr/bin/cri-shim server --cri-socket=unix:///var/run/containerd/containerd.sock --shim-socket=/var/run/sealos/cri-shim.sock
 Restart=always
 StartLimitInterval=0
 RestartSec=10
