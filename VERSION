@@ -1,1 +1,1 @@
-v2,fix-registry-password-with-addr
+v2,fix containerd root path support

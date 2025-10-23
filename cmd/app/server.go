@@ -39,6 +39,7 @@ func run(cfg *types.Config) {
 			ShimSocket:          cfg.CRIShimSocket,
 			CRISocket:           cfg.RuntimeSocket,
 			ContainerdNamespace: cfg.ContainerdNamespace,
+			ContainerdRoot:      cfg.ContainerdRoot,
 			PoolSize:            cfg.PoolSize,
 			MetricFlag:          cfg.MetricsConfig.Metric,
 		},
