@@ -47,11 +47,11 @@ type imageInterfaceImpl struct {
 // NewImageInterface returns a new implementation of ImageInterface
 // address: the address of the container runtime
 // writer: the io.Writer for output
-func NewImageInterface(namespace, address string, fStdout *os.File) (ImageInterface, error) {
+func NewImageInterface(namespace, address, root string, fStdout *os.File) (ImageInterface, error) {
 	global := types.GlobalCommandOptions{
 		Namespace:        namespace,
 		Address:          address,
-		DataRoot:         "/var/lib/containerd",
+		DataRoot:         root,
 		InsecureRegistry: true,
 	}
 	impl := &imageInterfaceImpl{

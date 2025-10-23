@@ -28,6 +28,7 @@ type Options struct {
 	Timeout             time.Duration
 	ShimSocket          string
 	ContainerdNamespace string
+	ContainerdRoot      string
 
 	CRISocket string
 	// User is the user ID for our gRPC socket.
@@ -69,7 +70,7 @@ func New(options Options, registryOptions imageutil.RegistryOptions) (*Server, e
 		panic(err)
 	}
 
-	imageClient, err := imageutil.NewImageInterface(options.ContainerdNamespace, options.CRISocket, devNull)
+	imageClient, err := imageutil.NewImageInterface(options.ContainerdNamespace, options.CRISocket, options.ContainerdRoot, devNull)
 	if err != nil {
 		return nil, err
 	}

@@ -105,12 +105,15 @@ test/cover:
 ## build: build the application
 .PHONY: build
 build:
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o=./bin/${BINARY_NAME} ${MAIN_PACKAGE_PATH}
+	rm -rf ./bin
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o=./bin/${BINARY_NAME}_linux-amd64 ${MAIN_PACKAGE_PATH}
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o=./bin/${BINARY_NAME}_linux-arm64 ${MAIN_PACKAGE_PATH}
 
 ## build/release: build the application for release with version info
 .PHONY: build/release
 build/release:
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o=./bin/${BINARY_NAME}-$(VERSION) ${MAIN_PACKAGE_PATH}
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o=./bin/${BINARY_NAME}-linux-amd64-$(VERSION) ${MAIN_PACKAGE_PATH}
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o=./bin/${BINARY_NAME}-linux-arm64-$(VERSION) ${MAIN_PACKAGE_PATH}
 
 ## run: run the  application
 .PHONY: run

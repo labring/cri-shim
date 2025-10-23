@@ -23,6 +23,7 @@ type Config struct {
 	PoolSize               int
 	Debug                  bool
 	Trace                  bool
+	ContainerdRoot         string
 	MetricsConfig          MetricsConfig
 }
 
@@ -38,6 +39,7 @@ type MetricsConfig struct {
 
 func BindOptions(cmd *cobra.Command) *Config {
 	cfg := &Config{}
+	cmd.Flags().StringVar(&cfg.ContainerdRoot, "containerd-root", "/var/lib/containerd", "Containerd root path")
 	cmd.Flags().StringVar(&cfg.RuntimeSocket, "cri-socket", "unix:///var/run/containerd/containerd.sock", "CRI socket path")
 	cmd.Flags().StringVar(&cfg.CRIShimSocket, "shim-socket", "/var/run/sealos/cri-shim.sock", "CRI shim socket path")
 	cmd.Flags().StringVar(&cfg.GlobalRegistryAddr, "global-registry-addr", "docker.io", "Global registry address")
